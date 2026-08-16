@@ -1,0 +1,12 @@
+<div id="job-panel" class="job-status {{ run.status }}" {% if run.status in ['queued', 'running'] %}hx-get="{{ url_for('web.job_status', run_id=run.id) }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <div class="job-status-head"><strong>Sync #{{ run.id }}</strong><span>{% if run.next_attempt_at %}waiting for arXiv{% else %}{{ run.status }}{% endif %}</span></div>
+  {% if run.status in ['queued', 'running'] %}
+    <div class="progress-track"><span style="width: {{ ((run.categories_done / run.categories_total * 100) if run.categories_total else 8)|round }}%"></span></div>
+  {% endif %}
+  <p>{{ run.categories_done }}/{{ run.categories_total }} sources · {{ run.papers_seen }} seen · {{ run.papers_added }} new · {{ run.papers_updated }} revised · {{ run.embeddings_generated }} embedded</p>
+  {% if run.current_category and run.status in ['queued', 'running'] %}<p>Current source: <strong>{{ run.current_category }}</strong></p>{% endif %}
+  {% if run.next_attempt_at %}
+    <p class="job-retry">{% if run.retry_status %}arXiv returned HTTP {{ run.retry_status }}.{% else %}The arXiv request was interrupted.{% endif %} Retry {{ run.retry_attempt }} is scheduled for {{ run.next_attempt_at }}. {{ run.retry_reason }}</p>
+  {% endif %}
+  {% if run.error %}<p class="job-error">{{ run.error }}</p>{% endif %}
+</div>

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ paper.title }} · Arxiv Cortex{% endblock %}
+{% block content %}
+  <article class="paper-detail">
+    <a class="back-link" href="{{ url_for('web.discover') }}">← Back to discover</a>
+    <div class="paper-meta">
+      <span class="category-chip">{{ paper.primary_category }}</span>
+      <time datetime="{{ paper.published_at }}">{{ paper.published_at|short_date }}</time>
+      <span>arXiv:{{ paper.arxiv_id }}v{{ paper.version }}</span>
+    </div>
+    <h1>{{ paper.title }}</h1>
+    <p class="authors large">{{ paper.authors|join(', ') }}</p>
+    <div class="detail-actions">
+      {% include "_paper_actions.html" %}
+      <a class="button" href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='abstract') }}" target="_blank" rel="noreferrer">Abstract on arXiv ↗</a>
+      <a class="button primary" href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='pdf') }}" target="_blank" rel="noreferrer">Open PDF ↗</a>
+    </div>
+    <section class="abstract-full">
+      <p class="eyebrow">Abstract</p>
+      <p class="arxiv-text">{{ paper.abstract }}</p>
+    </section>
+    <dl class="metadata-grid">
+      <div><dt>Categories</dt><dd>{{ paper.categories|join(', ') }}</dd></div>
+      <div><dt>Last updated</dt><dd>{{ paper.updated_at|short_date }}</dd></div>
+      {% if paper.doi %}<div><dt>DOI</dt><dd>{{ paper.doi }}</dd></div>{% endif %}
+      {% if paper.journal_ref %}<div><dt>Journal reference</dt><dd>{{ paper.journal_ref }}</dd></div>{% endif %}
+      {% if paper.comment %}<div><dt>Author comment</dt><dd>{{ paper.comment }}</dd></div>{% endif %}
+    </dl>
+  </article>
+
+  <section class="related-section">
+    <div class="section-heading"><div><p class="eyebrow">Vector neighbors</p><h2>Related papers</h2></div></div>
+    <div class="paper-list compact-list">
+      {% for paper in related %}{% include "_paper_card.html" %}{% else %}<p class="muted">Related papers appear after embedding completes.</p>{% endfor %}
+    </div>
+  </section>
+{% endblock %}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>{% block title %}Arxiv Cortex{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/katex/katex.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+    <script defer src="{{ url_for('static', filename='htmx.min.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='vendor/katex/katex.min.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+  </head>
+  <body class="{% block body_class %}{% endblock %}" hx-headers='{"X-CSRFToken":"{{ csrf_token() }}"}'>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="{{ url_for('web.discover') }}" aria-label="Arxiv Cortex home">
+        <span class="brand-arxiv" aria-hidden="true">ar<span>X</span>iv</span>
+        <span class="brand-divider" aria-hidden="true"></span>
+        <strong>Cortex</strong>
+      </a>
+      <nav aria-label="Primary navigation" {% if request.endpoint == 'web.onboarding' %}hidden{% endif %}>
+        <a href="{{ url_for('web.discover') }}" {% if request.endpoint == 'web.discover' %}aria-current="page"{% endif %}>Discover</a>
+        <a href="{{ url_for('web.library') }}" {% if request.endpoint == 'web.library' %}aria-current="page"{% endif %}>Library</a>
+        <a href="{{ url_for('web.settings') }}" {% if request.endpoint == 'web.settings' %}aria-current="page"{% endif %}>Settings</a>
+      </nav>
+    </header>
+
+    <main id="main-content" class="shell">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack" aria-live="polite">
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">
+      <span>Private, local, and independent.</span>
+      <a href="{{ url_for('api.openapi') }}">API contract</a>
+    </footer>
+  </body>
+</html>

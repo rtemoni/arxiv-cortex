@@ -1,0 +1,34 @@
+<div class="research-directory" data-research-directory>
+  {% for area in research_areas %}
+    <details class="research-area {% if area.selected_count %}has-selection{% endif %}" data-research-area {% if area.selected_count %}open{% endif %}>
+      <summary>
+        <span class="area-mark" aria-hidden="true">{{ area.short }}</span>
+        <span class="area-summary">
+          <strong>{{ area.name }}</strong>
+          <small>{{ area.description }}</small>
+        </span>
+        <span class="area-count" data-area-count aria-live="polite">
+          {% if area.selected_count %}{{ area.selected_count }} selected{% else %}{{ area.topics|length }} topics{% endif %}
+        </span>
+        <svg class="disclosure-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m5.5 3 5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </summary>
+      <div class="topic-panel">
+        <div class="topic-panel-header">
+          <div><strong>Refine {{ area.name }}</strong><span>Choose only the topics you want in your feed.</span></div>
+          <div class="topic-tools">
+            <button type="button" data-area-action="all">Select all</button>
+            <button type="button" data-area-action="clear">Clear</button>
+          </div>
+        </div>
+        <div class="topic-options">
+          {% for value, label in area.topics %}
+            <label>
+              <input type="checkbox" name="categories" value="{{ value }}" {% if value in selected %}checked{% endif %}>
+              <span><strong>{{ label }}</strong><small>{{ value }}</small></span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    </details>
+  {% endfor %}
+</div>

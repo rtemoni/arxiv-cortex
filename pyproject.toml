@@ -1,0 +1,73 @@
+[project]
+name = "arxiv-cortex"
+version = "0.1.0"
+description = "A lightweight local arXiv discovery, library, and recommendation server."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "apscheduler>=3.11,<4",
+  "arxiv>=2.2,<3",
+  "feedparser>=6.0,<7",
+  "flask>=3.1,<4",
+  "numpy>=2.1,<3",
+  "requests>=2.32,<3",
+  "sentence-transformers>=5.1,<6",
+  "torch>=2.8,<3",
+  "waitress>=3.0,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.4,<9",
+  "pytest-cov>=6.2,<7",
+  "ruff>=0.12,<1",
+]
+rag = [
+  "docling>=2.60,<3",
+]
+
+[project.scripts]
+arxiv-cortex = "arxiv_cortex.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/arxiv_cortex"]
+
+[tool.hatch.build]
+include = [
+  "src/arxiv_cortex/migrations/*.sql",
+  "src/arxiv_cortex/static/*",
+  "src/arxiv_cortex/static/**/*",
+  "src/arxiv_cortex/templates/*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+  "live: opt-in single-request arXiv contract check",
+  "performance: opt-in large-corpus performance checks",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+# PyPI's Linux torch wheel brings CUDA runtimes into an otherwise CPU-only app.
+# Keep native macOS wheels, but use PyTorch's CPU index in Linux and Docker.
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Discover · Arxiv Cortex{% endblock %}
+{% block content %}
+  <section class="workspace-heading">
+    <h1>Discover papers</h1>
+    {% if searching_all_arxiv and not remote_error %}
+      <p><strong>{{ total }}</strong> arXiv matches</p>
+    {% else %}
+      <p><strong>{{ total if total else "Local" }}</strong> {{ "matching papers" if total else "semantic index" }}</p>
+    {% endif %}
+  </section>
+
+  <div class="discovery-toolbar">
+    <form class="search-command" method="get" action="{{ url_for('web.discover') }}" role="search">
+      <input type="hidden" name="mode" value="{{ 'recommended' if mode == 'recommended' else 'newest' }}">
+      <span class="search-icon" aria-hidden="true"></span>
+      <label class="sr-only" for="paper-search">Search papers</label>
+      <input id="paper-search" type="search" name="q" value="{{ query_text }}" maxlength="300" placeholder="Search titles, authors, and abstracts">
+      <div class="search-actions">
+        <button class="button primary" type="submit">Search</button>
+        <label class="search-scope-toggle" title="Turn off to search the complete arXiv catalogue">
+          <input type="checkbox" name="local_only" value="1" {% if local_only %}checked{% endif %}>
+          <span class="toggle-track" aria-hidden="true"><span></span></span>
+          <span>Local search only</span>
+        </label>
+        <input type="hidden" name="local_only" value="0">
+      </div>
+    </form>
+
+    {% if search_tags %}
+      <nav class="search-tags" aria-label="Saved research tags">
+        <span>Research tags</span>
+        {% for tag in search_tags %}
+          <a href="{{ url_for('web.discover', tag=tag.id, category=category, days=days, hide_read='1' if hide_read else '') }}"
+             {% if active_tag and active_tag.id == tag.id %}aria-current="page"{% endif %}
+             title="{{ tag.description }}">{{ tag.name }}</a>
+        {% endfor %}
+        <a class="manage-tags" href="{{ url_for('web.settings') }}#research-tags">Edit tags</a>
+      </nav>
+    {% endif %}
+
+    <nav class="feed-tabs" aria-label="Paper feeds">
+      <a href="{{ url_for('web.discover', mode='newest', category=category, days=days, hide_read='1' if hide_read else '') }}" {% if mode in ['newest', 'search', 'similar'] %}aria-current="page"{% endif %}>Recent</a>
+      <a href="{{ url_for('web.discover', mode='recommended', category=category, days=days) }}" {% if mode == 'recommended' %}aria-current="page"{% endif %}>Recommended</a>
+      <a href="{{ url_for('web.library') }}">Library</a>
+    </nav>
+
+    <form class="filter-row" method="get" action="{{ url_for('web.discover') }}">
+      <input type="hidden" name="mode" value="{{ mode if mode in ['recommended', 'similar'] else 'newest' }}">
+      {% if mode == 'similar' %}<input type="hidden" name="paper" value="{{ request.args.get('paper', '') }}">{% endif %}
+      <input type="hidden" name="q" value="{{ query_text }}">
+      <input type="hidden" name="local_only" value="{{ '1' if local_only else '0' }}">
+      {% if active_tag %}<input type="hidden" name="tag" value="{{ active_tag.id }}">{% endif %}
+      <label>
+        <span>Category</span>
+        <select name="category">
+          <option value="">All followed sources</option>
+          {% for item in nav_categories %}
+            <option value="{{ item }}" {% if item == category %}selected{% endif %}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>Published</span>
+        <select name="days">
+          {% for value, label in [(0, 'Any time'), (7, 'Last 7 days'), (30, 'Last 30 days'), (90, 'Last 90 days'), (365, 'Last year')] %}
+            <option value="{{ value }}" {% if value == days %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="check-control">
+        <input type="checkbox" name="hide_read" value="1" {% if hide_read %}checked{% endif %}>
+        <span>Hide read</span>
+      </label>
+      <button class="button" type="submit">Apply filters</button>
+    </form>
+  </div>
+
+  {% if remote_error %}
+    <div class="feed-note remote-search-note error" role="alert">
+      <strong>Could not reach arXiv</strong>
+      <span>{{ remote_error }}</span>
+    </div>
+  {% elif searching_all_arxiv %}
+    <div class="feed-note remote-search-note">
+      <strong>Searching all of arXiv</strong>
+      <span>Displayed results are added to your local index so you can save, read, and revisit them.</span>
+    </div>
+  {% endif %}
+
+  {% if reason %}
+    <div class="feed-note {% if cold_start %}warm{% endif %}">
+      <strong>{{ "Getting to know you" if cold_start else "How this feed works" }}</strong>
+      <span>{{ reason }}</span>
+    </div>
+  {% endif %}
+
+  {% if active_tag %}
+    <div class="active-tag-note">
+      <strong>{{ active_tag.name }}</strong>
+      <span>{{ active_tag.description }}</span>
+      <span>{{ "Followed feed" if active_tag.followed else "Saved search" }} · {{ active_tag.phrase_count }} keyword phrases · matches any phrase</span>
+    </div>
+  {% endif %}
+
+  <section class="paper-list" aria-label="Papers">
+    {% for paper in papers %}
+      {% include "_paper_card.html" %}
+    {% else %}
+      <div class="empty-state">
+        <span class="empty-glyph" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M9 7h8M9 11h8M9 15h5M6 4.75h12A1.25 1.25 0 0 1 19.25 6v12A1.25 1.25 0 0 1 18 19.25H6A1.25 1.25 0 0 1 4.75 18V6A1.25 1.25 0 0 1 6 4.75Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </span>
+        <h2>No papers found</h2>
+        {% if searching_all_arxiv and not remote_error %}<p>Try fewer terms, a broader date window, or search without a category filter.</p>{% elif active_tag and active_tag.followed %}<p>This followed search may still be syncing. Refresh now, broaden the date window, or edit its phrases.</p>{% else %}<p>Try a broader date window or clear one of the filters.</p>{% endif %}
+      </div>
+    {% endfor %}
+  </section>
+
+  {% if page_number > 1 or has_next %}
+    <nav class="pagination" aria-label="Results pages">
+      {% if page_number > 1 %}
+        <a class="button" href="{{ url_for('web.discover', mode=mode, q=query_text, tag=active_tag.id if active_tag else '', category=category, days=days, hide_read='1' if hide_read else '', local_only='1' if local_only else '0', paper=request.args.get('paper', ''), page=page_number-1) }}">← Previous</a>
+      {% endif %}
+      <span>Page {{ page_number }}</span>
+      {% if has_next %}
+        <a class="button" href="{{ url_for('web.discover', mode=mode, q=query_text, tag=active_tag.id if active_tag else '', category=category, days=days, hide_read='1' if hide_read else '', local_only='1' if local_only else '0', paper=request.args.get('paper', ''), page=page_number+1) }}">Next →</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+{% endblock %}

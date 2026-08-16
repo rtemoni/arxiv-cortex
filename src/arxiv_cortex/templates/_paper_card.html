@@ -1,0 +1,28 @@
+<article class="paper-card" id="paper-{{ paper.arxiv_id|replace('/', '-') }}">
+  <div class="paper-meta">
+    <span class="category-chip">{{ paper.primary_category }}</span>
+    <time datetime="{{ paper.published_at }}">{{ paper.published_at|short_date }}</time>
+    {% if paper.version > 1 %}<span>v{{ paper.version }}</span>{% endif %}
+    {% if paper.score is defined and mode|default('') not in ['newest', 'search'] %}<span class="score" title="Similarity score">{{ "%.3f"|format(paper.score) }}</span>{% endif %}
+  </div>
+  <h2><a href="{{ url_for('web.paper_detail', arxiv_id=paper.arxiv_id) }}">{{ paper.title }}</a></h2>
+  <p class="authors">{{ paper.authors|join(', ') }}</p>
+  <details class="abstract">
+    <summary>Read abstract</summary>
+    <p class="arxiv-text">{{ paper.abstract }}</p>
+  </details>
+  {% if paper.why %}
+    <div class="why-block">
+      <strong>Why this?</strong>
+      <span>Close to {{ paper.why|join(' · ') }}</span>
+    </div>
+  {% endif %}
+  <div class="paper-footer">
+    {% include "_paper_actions.html" %}
+    <div class="external-links">
+      <a href="{{ url_for('web.discover', mode='similar', paper=paper.arxiv_id) }}">Similar</a>
+      <a href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='abstract') }}" target="_blank" rel="noreferrer">arXiv ↗</a>
+      <a href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='pdf') }}" target="_blank" rel="noreferrer">PDF ↗</a>
+    </div>
+  </div>
+</article>

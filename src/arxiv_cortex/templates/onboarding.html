@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Set up · Arxiv Cortex{% endblock %}
+{% block body_class %}onboarding-page{% endblock %}
+{% block content %}
+  <section class="onboarding-shell" aria-labelledby="welcome-title">
+    <form class="welcome-dialog" method="post">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div class="dialog-titlebar">
+        <span class="dialog-app-icon" aria-hidden="true">aX</span>
+        <span>Arxiv Cortex Setup</span>
+        <span class="local-badge">Local</span>
+      </div>
+
+      <div class="dialog-content">
+        <div class="welcome-heading">
+          <h1 id="welcome-title">Welcome to Arxiv Cortex</h1>
+          <p>Build a local paper feed around the questions you care about. Follow keyword searches, arXiv fields, or both.</p>
+        </div>
+
+        <div class="local-notice">
+          <span class="notice-icon" aria-hidden="true">
+            <svg viewBox="0 0 20 20" fill="none"><path d="m5.25 9.75 3 3 6.5-6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <div><strong>Local by default</strong><span>No account, hosted database, or cloud paper profile.</span></div>
+        </div>
+
+        <fieldset class="tag-source-picker">
+          <legend>Follow keyword searches</legend>
+          <p>Cortex asks arXiv for papers matching these phrases. A keyword search is enough to create your feed—you do not need to choose a field.</p>
+          <div class="onboarding-tag-list">
+            {% for tag in search_tags %}
+              <label class="onboarding-tag-option">
+                <input type="checkbox" name="tag_ids" value="{{ tag.id }}" {% if tag.id in selected_tag_ids %}checked{% endif %}>
+                <span><strong>{{ tag.name }}</strong><small>{{ tag.description or (tag.phrase_count ~ " keyword phrases") }}</small></span>
+                <em>{{ tag.phrase_count }} phrases</em>
+              </label>
+            {% endfor %}
+          </div>
+          <details class="onboarding-new-tag" {% if tag_name or tag_keywords %}open{% endif %}>
+            <summary>Create a custom keyword search</summary>
+            <div class="onboarding-tag-fields">
+              <label><span>Name</span><input name="tag_name" value="{{ tag_name }}" maxlength="60" placeholder="e.g. Mechanistic interpretability"></label>
+              <label><span>Description <small>Optional</small></span><input name="tag_description" value="{{ tag_description }}" maxlength="240" placeholder="What belongs in this feed?"></label>
+              <label class="tag-keywords-field"><span>Exact phrases</span><textarea name="tag_keywords" rows="4" placeholder="activation steering&#10;representation engineering&#10;linear probes">{{ tag_keywords }}</textarea><small>One phrase per line. Papers matching any phrase are included.</small></label>
+            </div>
+          </details>
+        </fieldset>
+
+        <fieldset class="subject-picker optional-fields">
+          <legend>Follow arXiv fields <small>Optional</small></legend>
+          <p>Use broad subject areas when you want a wider stream. Open a field to refine it to specific arXiv topics.</p>
+          {% include "_research_areas.html" %}
+        </fieldset>
+
+        <div class="setup-fields">
+          <label><span>Other arXiv categories <small>Optional</small></span><input name="custom_categories" value="{{ custom_categories }}" placeholder="e.g. cs.HC, econ.EM"></label>
+          <label><span>Initial history</span><select name="backfill_days"><option value="30" {% if backfill_days == 30 %}selected{% endif %}>30 days</option><option value="90" {% if backfill_days == 90 %}selected{% endif %}>90 days</option><option value="365" {% if backfill_days == 365 %}selected{% endif %}>1 year</option></select></label>
+        </div>
+      </div>
+
+      <div class="dialog-footer">
+        <p>Choose at least one keyword search or field. Syncing is rate-limited to respect arXiv.</p>
+        <button class="button primary" type="submit">Create local index</button>
+      </div>
+    </form>
+  </section>
+{% endblock %}

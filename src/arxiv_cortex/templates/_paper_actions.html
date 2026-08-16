@@ -1,0 +1,26 @@
+<div class="paper-actions" aria-label="Personal paper state">
+  <form method="post" action="{{ url_for('web.save_paper', arxiv_id=paper.arxiv_id) }}"
+        hx-post="{{ url_for('web.save_paper', arxiv_id=paper.arxiv_id) }}" hx-target="closest .paper-actions" hx-swap="outerHTML">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="active" value="{{ '0' if paper.state.saved else '1' }}">
+    <button class="action-button {% if paper.state.saved %}active{% endif %}" type="submit" aria-pressed="{{ 'true' if paper.state.saved else 'false' }}">
+      {{ 'Saved' if paper.state.saved else 'Save' }}
+    </button>
+  </form>
+  <form method="post" action="{{ url_for('web.read_paper', arxiv_id=paper.arxiv_id) }}"
+        hx-post="{{ url_for('web.read_paper', arxiv_id=paper.arxiv_id) }}" hx-target="closest .paper-actions" hx-swap="outerHTML">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="active" value="{{ '0' if paper.state.read else '1' }}">
+    <button class="action-button {% if paper.state.read %}active{% endif %}" type="submit" aria-pressed="{{ 'true' if paper.state.read else 'false' }}">
+      {{ 'Read' if paper.state.read else 'Mark read' }}
+    </button>
+  </form>
+  <form method="post" action="{{ url_for('web.dismiss_paper', arxiv_id=paper.arxiv_id) }}"
+        hx-post="{{ url_for('web.dismiss_paper', arxiv_id=paper.arxiv_id) }}" hx-target="closest .paper-actions" hx-swap="outerHTML">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="active" value="{{ '0' if paper.state.dismissed else '1' }}">
+    <button class="action-button quiet {% if paper.state.dismissed %}active negative{% endif %}" type="submit" aria-pressed="{{ 'true' if paper.state.dismissed else 'false' }}">
+      {{ 'Dismissed' if paper.state.dismissed else 'Not interested' }}
+    </button>
+  </form>
+</div>

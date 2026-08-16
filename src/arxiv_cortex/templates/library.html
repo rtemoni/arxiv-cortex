@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Library · Arxiv Cortex{% endblock %}
+{% block content %}
+  <section class="page-heading">
+    <div><p class="eyebrow">Your research memory</p><h1>Library</h1><p>{{ total }} papers in this view.</p></div>
+  </section>
+  <form class="filter-panel library-filter" method="get">
+    <label class="search-field"><span class="sr-only">Search library</span><input type="search" name="q" value="{{ query_text }}" placeholder="Search your library…"></label>
+    <label><span>Reading status</span><select name="read"><option value="">All saved</option><option value="unread" {% if read_status == 'unread' %}selected{% endif %}>Unread</option><option value="read" {% if read_status == 'read' %}selected{% endif %}>Read</option></select></label>
+    <label><span>Category</span><select name="category"><option value="">All categories</option>{% for item in library_categories %}<option value="{{ item }}" {% if item == category %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
+    <label><span>Published</span><select name="days">{% for value, label in [(0, 'Any time'), (30, 'Last 30 days'), (90, 'Last 90 days'), (365, 'Last year')] %}<option value="{{ value }}" {% if value == days %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <button class="button primary" type="submit">Apply</button>
+  </form>
+  <section class="paper-list">
+    {% for paper in papers %}{% include "_paper_card.html" %}{% else %}
+      <div class="empty-state"><span class="empty-glyph">◇</span><h2>Nothing here yet</h2><p>Save interesting papers or mark them read from Discover.</p><a class="button primary" href="{{ url_for('web.discover') }}">Explore papers</a></div>
+    {% endfor %}
+  </section>
+  {% if page_number > 1 or has_next %}<nav class="pagination">{% if page_number > 1 %}<a class="button" href="{{ url_for('web.library', read=read_status, q=query_text, category=category, days=days, page=page_number-1) }}">← Previous</a>{% endif %}<span>Page {{ page_number }}</span>{% if has_next %}<a class="button" href="{{ url_for('web.library', read=read_status, q=query_text, category=category, days=days, page=page_number+1) }}">Next →</a>{% endif %}</nav>{% endif %}
+{% endblock %}

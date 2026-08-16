@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Settings · Arxiv Cortex{% endblock %}
+{% block content %}
+  <section class="page-heading"><div><p class="eyebrow">Local control plane</p><h1>Settings</h1><p>Manage followed searches, optional fields, indexing, and the daily update cycle.</p></div><form method="post" action="{{ url_for('web.start_sync') }}" hx-post="{{ url_for('web.start_sync') }}" hx-target="#job-panel" hx-swap="innerHTML"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button class="button primary" type="submit">Refresh now</button></form></section>
+
+  <div class="stats-grid">
+    <div><span>{{ stats.papers }}</span><small>Papers</small></div>
+    <div><span>{{ stats.embeddings }}</span><small>Embeddings</small></div>
+    <div class="model-stat"><span>{{ stats.model.split('/')[-1] }}</span><small>Active model</small></div>
+  </div>
+
+  <div id="job-panel" class="job-panel">
+    {% if active_run_id %}
+      <div hx-get="{{ url_for('web.job_status', run_id=active_run_id) }}" hx-trigger="load" hx-swap="outerHTML">Loading job…</div>
+    {% elif latest_run %}
+      {% with run=latest_run %}{% include "_job_status.html" %}{% endwith %}
+    {% endif %}
+  </div>
+
+  <section id="research-tags" class="tag-settings" aria-labelledby="research-tags-title">
+    {% set create_tag_error = search_tag_form if search_tag_form and search_tag_form.kind == 'create' else none %}
+    <header class="tag-settings-head">
+      <div>
+        <h2 id="research-tags-title">Research tags</h2>
+        <p>Follow a keyword search to fetch matching papers directly from arXiv. Fields are not required.</p>
+      </div>
+      <details class="new-tag-disclosure" {% if create_tag_error %}open{% endif %}>
+        <summary class="button">New tag</summary>
+        <form class="tag-editor-form new-tag-form" method="post" action="{{ url_for('web.create_search_tag') }}">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          {% if create_tag_error %}<p id="new-tag-error" class="tag-form-error" role="alert">{{ create_tag_error.error }}</p>{% endif %}
+          <label><span>Name</span><input name="name" value="{{ create_tag_error.name if create_tag_error else '' }}" maxlength="60" required placeholder="e.g. Mechanistic interpretability" {% if create_tag_error %}aria-invalid="true" aria-describedby="new-tag-error" autofocus{% endif %}></label>
+          <label><span>Description</span><input name="description" value="{{ create_tag_error.description if create_tag_error else '' }}" maxlength="240" placeholder="What belongs in this search?"></label>
+          <label class="tag-keywords-field"><span>Keyword phrases</span><textarea name="keywords" rows="7" required placeholder="activation steering&#10;representation engineering&#10;linear probes">{{ create_tag_error.keywords if create_tag_error else '' }}</textarea><small>One exact phrase per line, or separate phrases with commas.</small></label>
+          <label class="follow-search-control"><input type="checkbox" name="followed" value="1" {% if not create_tag_error or create_tag_error.followed %}checked{% endif %}><span><strong>Follow this search</strong><small>Fetch matching papers during the daily sync.</small></span></label>
+          <div class="tag-editor-actions"><button class="button primary" type="submit">Create tag</button></div>
+        </form>
+      </details>
+    </header>
+
+    <div class="tag-directory">
+      {% for tag in search_tags %}
+        {% set update_tag_error = search_tag_form if search_tag_form and search_tag_form.kind == 'update' and search_tag_form.tag_id == tag.id else none %}
+        <details class="tag-editor" id="tag-{{ tag.id }}" {% if update_tag_error %}open{% endif %}>
+          <summary>
+            <span class="tag-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M4.75 6.5v4.88c0 .4.16.78.44 1.06l6.37 6.37a1.5 1.5 0 0 0 2.12 0l5.13-5.13a1.5 1.5 0 0 0 0-2.12L12.44 5.2a1.5 1.5 0 0 0-1.06-.44H6.5A1.75 1.75 0 0 0 4.75 6.5Z" stroke="currentColor" stroke-width="1.5"/><circle cx="8.35" cy="8.35" r="1.1" fill="currentColor"/></svg>
+            </span>
+            <span class="tag-row-copy"><strong>{{ tag.name }}</strong><small>{{ tag.description or "No description" }}</small></span>
+            <span class="tag-follow-state {{ 'active' if tag.followed else '' }}">{{ "Following" if tag.followed else "Saved only" }}</span>
+            <span class="tag-phrase-count">{{ tag.phrase_count }} phrases</span>
+            <span class="tag-edit-label">Edit</span>
+          </summary>
+          <form class="tag-editor-form" method="post" action="{{ url_for('web.update_search_tag', tag_id=tag.id) }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            {% if update_tag_error %}<p id="tag-{{ tag.id }}-error" class="tag-form-error" role="alert">{{ update_tag_error.error }}</p>{% endif %}
+            <label><span>Name</span><input name="name" value="{{ update_tag_error.name if update_tag_error else tag.name }}" maxlength="60" required {% if update_tag_error %}aria-invalid="true" aria-describedby="tag-{{ tag.id }}-error" autofocus{% endif %}></label>
+            <label><span>Description</span><input name="description" value="{{ update_tag_error.description if update_tag_error else tag.description }}" maxlength="240"></label>
+            <label class="tag-keywords-field"><span>Keyword phrases</span><textarea name="keywords" rows="8" required>{{ update_tag_error.keywords if update_tag_error else tag.keywords }}</textarea><small>Matches any line as an exact phrase in the paper metadata.</small></label>
+            <label class="follow-search-control"><input type="checkbox" name="followed" value="1" {% if (update_tag_error.followed if update_tag_error else tag.followed) %}checked{% endif %}><span><strong>Follow this search</strong><small>Fetch matching papers during the daily sync. No field subscription is required.</small></span></label>
+            <div class="tag-editor-actions">
+              <a href="{{ url_for('web.discover', tag=tag.id) }}">Open search</a>
+              <span></span>
+              <button class="button danger-button" type="submit" formaction="{{ url_for('web.delete_search_tag', tag_id=tag.id) }}" formnovalidate data-confirm="Delete the research tag ‘{{ tag.name }}’?">Delete</button>
+              <button class="button primary" type="submit">Save changes</button>
+            </div>
+          </form>
+        </details>
+      {% else %}
+        <p class="tag-empty">No research tags yet. Create one to keep a reusable keyword search close at hand.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <form class="settings-form" method="post">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <section class="settings-section">
+      <div><p class="eyebrow">Optional sources</p><h2>Followed fields</h2><p>Use fields for a broader stream, or leave every field unchecked and follow keyword searches only. Removing a field never deletes papers or library state.</p></div>
+      <div class="field-stack">
+        {% with selected=enabled %}{% include "_research_areas.html" %}{% endwith %}
+        <label><span>Other arXiv categories</span><input name="custom_categories" value="{{ custom_categories }}" placeholder="e.g. cs.OH, physics.gen-ph"></label>
+      </div>
+    </section>
+    <section class="settings-section">
+      <div><p class="eyebrow">Cadence</p><h2>Background updates</h2><p>One local job runs at a time. Revised paper versions are included.</p></div>
+      <div class="field-stack">
+        <label><span>Daily sync time</span><input type="time" name="sync_time" value="{{ sync_time }}"></label>
+        <label><span>Recommendation window</span><select name="recommendation_days">{% for value, label in [(7, '7 days'), (30, '30 days'), (90, '90 days'), (0, 'All time')] %}<option value="{{ value }}" {% if value == recommendation_days %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      </div>
+    </section>
+    <div class="form-submit"><button class="button primary" type="submit">Save settings</button></div>
+  </form>
+{% endblock %}

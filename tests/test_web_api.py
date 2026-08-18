@@ -393,6 +393,8 @@ def test_api_contract_health_search_detail_and_limits(app, client, seed_paper):
     health = client.get("/api/v1/health")
     assert health.status_code == 200
     assert health.json["data"]["papers"] == 1
+    assert health.json["data"]["research_tags"] == 1
+    assert health.json["data"]["tag_subscriptions"] == 0
 
     result = client.get("/api/v1/papers?q=vision&limit=1")
     assert result.status_code == 200

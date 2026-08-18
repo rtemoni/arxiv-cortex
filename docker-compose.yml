@@ -8,8 +8,25 @@ services:
     environment:
       ARXIV_CORTEX_DATA_DIR: /data
       HF_HOME: /models/huggingface
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import json, urllib.request;
+          data = json.load(urllib.request.urlopen('http://127.0.0.1:5000/api/v1/health', timeout=5))['data'];
+          assert data['status'] == 'ok' and 'research_tags' in data and 'tag_subscriptions' in data
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     volumes:
-      - ./data:/data
+      - type: bind
+        source: ./data
+        target: /data
+        bind:
+          create_host_path: false
       - model-cache:/models
 
 volumes:

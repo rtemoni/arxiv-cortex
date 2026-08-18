@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from arxiv_cortex.db import database_connection
+from arxiv_cortex.db import database_connection, run_migrations
 from arxiv_cortex.services.papers import PaperQuery, PaperService, _fts_expression
 from arxiv_cortex.services.search_tags import SearchTagService
 from arxiv_cortex.services.settings import SettingsService
@@ -125,6 +125,25 @@ def test_search_tags_can_be_the_only_followed_sources(app):
         tags.set_followed([second["id"]], backfill_days=90)
         assert [tag["id"] for tag in tags.list(followed_only=True)] == [second["id"]]
         assert tags.get(first["id"])["followed"] is False
+
+
+def test_search_tags_persist_when_migrations_rerun(app):
+    database = app.config["DATABASE"]
+    with database_connection(database) as connection:
+        created = SearchTagService(connection).create(
+            "Persistent tag",
+            "Survives application restarts and redeploy migrations.",
+            "durable research state",
+            followed=True,
+        )
+
+    run_migrations(database)
+
+    with database_connection(database) as connection:
+        restored = SearchTagService(connection).get(created["id"])
+        assert restored is not None
+        assert restored["name"] == "Persistent tag"
+        assert restored["followed"] is True
 
 
 def test_search_tag_validation_rejects_empty_and_duplicate_names(app):

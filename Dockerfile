@@ -20,4 +20,4 @@ USER cortex
 EXPOSE 5000
 VOLUME ["/data", "/models"]
 
-CMD ["uv", "run", "--frozen", "arxiv-cortex", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["/app/.venv/bin/arxiv-cortex", "--host", "0.0.0.0", "--port", "5000"]

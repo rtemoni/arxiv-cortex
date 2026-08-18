@@ -19,6 +19,7 @@ def health():
     model_id = settings.get("embedding_model", "") or ""
     last_run = connection.execute("SELECT * FROM sync_runs ORDER BY id DESC LIMIT 1").fetchone()
     field_subscriptions = len(settings.subscriptions(enabled_only=True))
+    research_tags = int(connection.execute("SELECT COUNT(*) FROM search_tags").fetchone()[0])
     tag_subscriptions = int(
         connection.execute("SELECT COUNT(*) FROM search_tags WHERE enabled = 1").fetchone()[0]
     )
@@ -30,6 +31,7 @@ def health():
                 "embeddings": papers.embedding_count(model_id),
                 "subscriptions": field_subscriptions + tag_subscriptions,
                 "field_subscriptions": field_subscriptions,
+                "research_tags": research_tags,
                 "tag_subscriptions": tag_subscriptions,
                 "last_sync": dict(last_run) if last_run else None,
             }

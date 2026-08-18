@@ -37,10 +37,17 @@ Normal tests never contact arXiv. Opt into the one-request contract check with
 ## Run with Docker
 
 ```bash
-docker compose up --build
+./scripts/deploy-arxiv-cortex.sh
 ```
 
-Compose binds only to `127.0.0.1`, stores the database in `./data`, and keeps model files in a named volume. Override the host port with `ARXIV_CORTEX_PORT`.
+The deployment script takes a verified online SQLite backup, rebuilds and recreates the
+container, waits for a tag-aware health check, and verifies that the research-tag count did
+not change. Backups are written to `data/backups/`, which remains outside the container
+image and is ignored by Git.
+
+Compose binds only to `127.0.0.1`, stores the database in the required `./data` bind mount,
+and keeps model files in a named volume. Compose refuses to create a replacement data
+directory silently. Override the host port with `ARXIV_CORTEX_PORT`.
 The lock selects PyTorch's CPU-only wheel on Linux, so the image does not carry CUDA runtimes.
 
 ## How it works

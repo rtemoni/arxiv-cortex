@@ -225,6 +225,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  if (!event.target.closest(".group-picker, .new-group-disclosure, .import-paper-disclosure")) {
+    document.querySelectorAll(".group-picker[open], .new-group-disclosure[open], .import-paper-disclosure[open]").forEach(
+      (details) => details.removeAttribute("open"),
+    );
+  }
+
   const action = event.target.closest("[data-area-action]");
   if (!action) return;
 
@@ -236,9 +242,40 @@ document.addEventListener("click", (event) => {
   updateResearchArea(area);
 });
 
+document.addEventListener("toggle", (event) => {
+  const details = event.target;
+  if (!details.matches?.(".group-picker, .new-group-disclosure, .import-paper-disclosure") || !details.open) return;
+  document.querySelectorAll(".group-picker[open], .new-group-disclosure[open], .import-paper-disclosure[open]").forEach(
+    (other) => {
+      if (other !== details) other.removeAttribute("open");
+    },
+  );
+  if (details.matches(".new-group-disclosure")) {
+    details.querySelector('input[name="name"]')?.focus();
+  } else if (details.matches(".import-paper-disclosure")) {
+    details.querySelector('input[name="url"]')?.focus();
+  }
+}, true);
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const details = document.querySelector(".group-picker[open], .new-group-disclosure[open], .import-paper-disclosure[open]");
+  if (!details) return;
+  event.preventDefault();
+  details.removeAttribute("open");
+  details.querySelector(":scope > summary")?.focus();
+});
+
 document.addEventListener("change", (event) => {
-  if (!event.target.matches('[data-research-area] input[name="categories"]')) return;
-  updateResearchArea(event.target.closest("[data-research-area]"));
+  if (event.target.matches('.group-picker input[name="group_ids"]')) {
+    const picker = event.target.closest(".group-picker");
+    const count = picker.querySelectorAll('input[name="group_ids"]:checked').length;
+    picker.querySelector(".group-picker-head span").textContent = `${count} selected`;
+    return;
+  }
+  if (event.target.matches('[data-research-area] input[name="categories"]')) {
+    updateResearchArea(event.target.closest("[data-research-area]"));
+  }
 });
 
 document.addEventListener("DOMContentLoaded", () => renderArxivText());

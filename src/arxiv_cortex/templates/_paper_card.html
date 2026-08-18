@@ -1,7 +1,12 @@
 <article class="paper-card" id="paper-{{ paper.arxiv_id|replace('/', '-') }}">
   <div class="paper-meta">
-    <span class="category-chip">{{ paper.primary_category }}</span>
-    <time datetime="{{ paper.published_at }}">{{ paper.published_at|short_date }}</time>
+    {% if paper.source.kind == 'arxiv' %}
+      <span class="category-chip">{{ paper.primary_category }}</span>
+    {% else %}
+      <span class="source-chip">{{ paper.source.name }}</span>
+      {% if paper.source.venue %}<span>{{ paper.source.venue }}</span>{% endif %}
+    {% endif %}
+    {% if paper.source.kind == 'arxiv' or paper.source.date_known %}<time datetime="{{ paper.published_at }}">{{ paper.published_at|short_date }}</time>{% endif %}
     {% if paper.version > 1 %}<span>v{{ paper.version }}</span>{% endif %}
     {% if paper.score is defined and mode|default('') not in ['newest', 'search'] %}<span class="score" title="Similarity score">{{ "%.3f"|format(paper.score) }}</span>{% endif %}
   </div>
@@ -17,12 +22,25 @@
       <span>Close to {{ paper.why|join(' · ') }}</span>
     </div>
   {% endif %}
+  {% if library_mode|default(false) and paper.groups %}
+    <nav class="paper-group-chips" aria-label="Paper groups">
+      <svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M3.5 5.5h5l1.5 2h6.5v8.25a.75.75 0 0 1-.75.75H4.25a.75.75 0 0 1-.75-.75V5.5Z"/></svg>
+      {% for group in paper.groups %}<a href="{{ url_for('web.library', group=group.id) }}">{{ group.name }}</a>{% endfor %}
+    </nav>
+  {% endif %}
   <div class="paper-footer">
-    {% include "_paper_actions.html" %}
+    <div class="paper-controls">
+      {% include "_paper_actions.html" %}
+      {% if library_mode|default(false) %}{% include "_paper_group_picker.html" %}{% endif %}
+    </div>
     <div class="external-links">
       <a href="{{ url_for('web.discover', mode='similar', paper=paper.arxiv_id) }}">Similar</a>
-      <a href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='abstract') }}" target="_blank" rel="noreferrer">arXiv ↗</a>
-      <a href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='pdf') }}" target="_blank" rel="noreferrer">PDF ↗</a>
+      {% if paper.source.kind == 'arxiv' %}
+        <a href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='webpage') }}" target="_blank" rel="noreferrer">arXiv ↗</a>
+      {% elif paper.links.webpage %}
+        <a href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='webpage') }}" target="_blank" rel="noreferrer">Webpage ↗</a>
+      {% endif %}
+      {% if paper.links.pdf %}<a href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='pdf') }}" target="_blank" rel="noreferrer">PDF ↗</a>{% endif %}
     </div>
   </div>
 </article>

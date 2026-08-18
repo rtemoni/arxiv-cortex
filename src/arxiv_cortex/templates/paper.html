@@ -4,16 +4,16 @@
   <article class="paper-detail">
     <a class="back-link" href="{{ url_for('web.discover') }}">← Back to discover</a>
     <div class="paper-meta">
-      <span class="category-chip">{{ paper.primary_category }}</span>
-      <time datetime="{{ paper.published_at }}">{{ paper.published_at|short_date }}</time>
-      <span>arXiv:{{ paper.arxiv_id }}v{{ paper.version }}</span>
+      {% if paper.source.kind == 'arxiv' %}<span class="category-chip">{{ paper.primary_category }}</span>{% else %}<span class="source-chip">{{ paper.source.name }}</span>{% endif %}
+      {% if paper.source.kind == 'arxiv' or paper.source.date_known %}<time datetime="{{ paper.published_at }}">{{ paper.published_at|short_date }}</time>{% endif %}
+      {% if paper.source.kind == 'arxiv' %}<span>arXiv:{{ paper.arxiv_id }}v{{ paper.version }}</span>{% elif paper.source.venue %}<span>{{ paper.source.venue }}</span>{% endif %}
     </div>
     <h1>{{ paper.title }}</h1>
     <p class="authors large">{{ paper.authors|join(', ') }}</p>
     <div class="detail-actions">
       {% include "_paper_actions.html" %}
-      <a class="button" href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='abstract') }}" target="_blank" rel="noreferrer">Abstract on arXiv ↗</a>
-      <a class="button primary" href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='pdf') }}" target="_blank" rel="noreferrer">Open PDF ↗</a>
+      {% if paper.links.webpage %}<a class="button" href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='webpage') }}" target="_blank" rel="noreferrer">{% if paper.source.kind == 'arxiv' %}Abstract on arXiv{% else %}Open webpage{% endif %} ↗</a>{% endif %}
+      {% if paper.links.pdf %}<a class="button primary" href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='pdf') }}" target="_blank" rel="noreferrer">Open PDF ↗</a>{% endif %}
     </div>
     <section class="abstract-full">
       <p class="eyebrow">Abstract</p>
@@ -22,6 +22,7 @@
     <dl class="metadata-grid">
       <div><dt>Categories</dt><dd>{{ paper.categories|join(', ') }}</dd></div>
       <div><dt>Last updated</dt><dd>{{ paper.updated_at|short_date }}</dd></div>
+      {% if paper.source.kind != 'arxiv' %}<div><dt>Source</dt><dd>{{ paper.source.name }}{% if paper.source.venue %} · {{ paper.source.venue }}{% endif %}</dd></div>{% endif %}
       {% if paper.doi %}<div><dt>DOI</dt><dd>{{ paper.doi }}</dd></div>{% endif %}
       {% if paper.journal_ref %}<div><dt>Journal reference</dt><dd>{{ paper.journal_ref }}</dd></div>{% endif %}
       {% if paper.comment %}<div><dt>Author comment</dt><dd>{{ paper.comment }}</dd></div>{% endif %}

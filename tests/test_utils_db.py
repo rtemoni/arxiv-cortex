@@ -40,7 +40,14 @@ def test_migration_enables_wal_foreign_keys_and_fts(app, seed_paper):
         assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         migrations = connection.execute("SELECT version FROM schema_migrations").fetchall()
-        assert [row["version"] for row in migrations] == ["001", "002", "003", "004"]
+        assert [row["version"] for row in migrations] == [
+            "001",
+            "002",
+            "003",
+            "004",
+            "005",
+            "006",
+        ]
         sync_columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(sync_runs)")
         }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import urlsplit
 
 from flask import (
     Blueprint,
@@ -17,6 +18,8 @@ from flask import (
 from arxiv_cortex.db import get_db
 from arxiv_cortex.security import csrf_token, validate_csrf
 from arxiv_cortex.services.arxiv_sync import ArxivRequestError
+from arxiv_cortex.services.groups import PaperGroupService
+from arxiv_cortex.services.imports import PaperImportError, PaperImportService
 from arxiv_cortex.services.papers import PaperQuery, PaperService
 from arxiv_cortex.services.recommendations import RecommendationService
 from arxiv_cortex.services.remote_search import RemoteSearchService
@@ -25,6 +28,7 @@ from arxiv_cortex.services.settings import SettingsService
 
 web = Blueprint("web", __name__)
 SEARCH_TAG_FORM_SESSION_KEY = "search_tag_form"
+PAPER_IMPORT_FORM_SESSION_KEY = "paper_import_form"
 
 COMMON_CATEGORIES = [
     ("cs.AI", "Artificial Intelligence"),
@@ -470,6 +474,11 @@ def library():
         read_status = ""
     days = _int_arg("days", 0, allowed={0, 30, 90, 365})
     connection = get_db()
+    group_service = PaperGroupService(connection)
+    group_id = _int_arg("group", 0)
+    selected_group = group_service.get(group_id) if group_id > 0 else None
+    if group_id != 0 and not selected_group:
+        abort(404)
     result = PaperService(connection).list(
         PaperQuery(
             query=request.args.get("q", "").strip(),
@@ -477,10 +486,18 @@ def library():
             days=days,
             state="saved",
             read_status=read_status or None,
+            group_id=group_id or None,
             active_categories_only=False,
             offset=(page_number - 1) * per_page,
             limit=per_page,
         )
+    )
+    group_service.attach_to_papers(result.items)
+    groups = group_service.list()
+    all_papers_total = int(
+        connection.execute(
+            "SELECT COUNT(*) FROM paper_state WHERE saved_at IS NOT NULL"
+        ).fetchone()[0]
     )
     library_categories = [
         row["category"]
@@ -505,7 +522,99 @@ def library():
         page_number=page_number,
         has_next=result.has_next,
         total=result.total,
+        all_papers_total=all_papers_total,
+        groups=groups,
+        selected_group=selected_group,
+        import_form=session.pop(PAPER_IMPORT_FORM_SESSION_KEY, None),
+        library_mode=True,
     )
+
+
+@web.post("/library/groups")
+def create_paper_group():
+    try:
+        group = PaperGroupService(get_db()).create(request.form.get("name", ""))
+    except ValueError as error:
+        flash(str(error), "error")
+        return redirect(url_for("web.library"))
+    flash(f"Created group “{group['name']}”.", "success")
+    return redirect(url_for("web.library", group=group["id"]))
+
+
+@web.post("/library/import")
+def import_paper():
+    connection = get_db()
+    try:
+        group_id = max(0, int(request.form.get("group_id", "0") or 0))
+    except ValueError:
+        group_id = 0
+    importer_factory = current_app.config.get("PAPER_IMPORT_SERVICE_FACTORY")
+    importer = (
+        importer_factory(connection) if importer_factory else PaperImportService(connection)
+    )
+    groups = PaperGroupService(connection)
+    if group_id and not groups.get(group_id):
+        flash("That group no longer exists. Choose another group and try again.", "error")
+        return redirect(url_for("web.library"))
+    try:
+        paper = importer.import_url(
+            request.form.get("url", ""),
+            title=request.form.get("title", ""),
+        )
+        groups.save_paper(paper["arxiv_id"], group_id or None)
+    except (PaperImportError, LookupError) as error:
+        session[PAPER_IMPORT_FORM_SESSION_KEY] = {
+            "url": request.form.get("url", ""),
+            "title": request.form.get("title", ""),
+            "group_id": group_id,
+            "error": str(error),
+        }
+        flash(str(error), "error")
+        return redirect(url_for("web.library", group=group_id or None))
+    current_app.extensions["job_manager"].submit_indexing()
+    flash(f"Added “{paper['title']}” to your library.", "success")
+    return redirect(url_for("web.library", group=group_id or None))
+
+
+@web.post("/library/groups/<int:group_id>")
+def rename_paper_group(group_id: int):
+    try:
+        group = PaperGroupService(get_db()).rename(group_id, request.form.get("name", ""))
+    except LookupError:
+        abort(404)
+    except ValueError as error:
+        flash(str(error), "error")
+        return redirect(url_for("web.library", group=group_id))
+    flash(f"Renamed group to “{group['name']}”.", "success")
+    return redirect(url_for("web.library", group=group_id))
+
+
+@web.post("/library/groups/<int:group_id>/delete")
+def delete_paper_group(group_id: int):
+    try:
+        name = PaperGroupService(get_db()).delete(group_id)
+    except LookupError:
+        abort(404)
+    flash(f"Deleted group “{name}”. Its papers are still in All papers.", "success")
+    return redirect(url_for("web.library"))
+
+
+@web.post("/papers/<path:arxiv_id>/groups")
+def assign_paper_groups(arxiv_id: str):
+    try:
+        group_ids = _group_ids_from_form()
+        PaperGroupService(get_db()).assign_paper(arxiv_id, group_ids)
+    except LookupError:
+        abort(404)
+    except ValueError as error:
+        flash(str(error), "error")
+    else:
+        count = len(set(group_ids))
+        message = "Removed paper from all groups." if count == 0 else (
+            f"Added paper to {count} group{'s' if count != 1 else ''}."
+        )
+        flash(message, "success")
+    return redirect(_library_return_url())
 
 
 @web.route("/settings", methods=["GET", "POST"])
@@ -679,10 +788,13 @@ def dismiss_paper(arxiv_id: str):
 
 @web.get("/papers/<path:arxiv_id>/open/<kind>")
 def open_paper(arxiv_id: str, kind: str):
-    if kind not in {"abstract", "pdf"}:
+    if kind not in {"abstract", "webpage", "pdf"}:
         abort(404)
     paper = PaperService(get_db()).mark_opened(arxiv_id)
-    return redirect(paper["links"][kind])
+    destination = paper["links"].get(kind)
+    if not destination:
+        abort(404)
+    return redirect(destination)
 
 
 @web.app_errorhandler(400)
@@ -732,3 +844,24 @@ def _form_int_list(name: str) -> list[int]:
         if value > 0:
             values.append(value)
     return values
+
+
+def _group_ids_from_form() -> list[int]:
+    values: list[int] = []
+    for raw_value in request.form.getlist("group_ids"):
+        try:
+            value = int(raw_value)
+        except ValueError as error:
+            raise ValueError("A selected group is invalid") from error
+        if value <= 0:
+            raise ValueError("A selected group is invalid")
+        values.append(value)
+    return values
+
+
+def _library_return_url() -> str:
+    candidate = request.form.get("return_to", "")
+    parsed = urlsplit(candidate)
+    if not parsed.scheme and not parsed.netloc and parsed.path == url_for("web.library"):
+        return candidate
+    return url_for("web.library")

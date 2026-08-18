@@ -1,20 +1,107 @@
 {% extends "base.html" %}
 {% block title %}Library · Arxiv Cortex{% endblock %}
 {% block content %}
-  <section class="page-heading">
-    <div><p class="eyebrow">Your research memory</p><h1>Library</h1><p>{{ total }} papers in this view.</p></div>
+  <section class="page-heading library-heading">
+    <div>
+      <h1>Library</h1>
+      <p>{% if selected_group %}{{ selected_group.name }}{% else %}All papers{% endif %} · {{ total }} paper{% if total != 1 %}s{% endif %} in this view.</p>
+    </div>
+    <details class="import-paper-disclosure" {% if import_form %}open{% endif %}>
+      <summary class="button primary">Import paper</summary>
+      <form class="import-paper-form" method="post" action="{{ url_for('web.import_paper') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <div class="import-paper-head">
+          <strong>Add from a link</strong>
+          <span>arXiv, USENIX, RFC Editor, P4.org, or a public PDF</span>
+        </div>
+        {% if import_form and import_form.error %}<p class="inline-error import-paper-error" role="alert">{{ import_form.error }}</p>{% endif %}
+        <label><span>Paper URL</span><input type="url" name="url" value="{{ import_form.url if import_form else '' }}" required inputmode="url" autocomplete="url" placeholder="https://…"></label>
+        <label><span>Title <small>optional PDF fallback</small></span><input type="text" name="title" value="{{ import_form.title if import_form else '' }}" maxlength="300" placeholder="Use when a PDF has no title metadata"></label>
+        <label><span>Add to group</span><select name="group_id"><option value="">No group</option>{% for group in groups %}<option value="{{ group.id }}" {% if (import_form and import_form.group_id == group.id) or (not import_form and selected_group and selected_group.id == group.id) %}selected{% endif %}>{{ group.name }}</option>{% endfor %}</select></label>
+        <button class="button primary wide" type="submit">Save to library</button>
+      </form>
+    </details>
   </section>
-  <form class="filter-panel library-filter" method="get">
-    <label class="search-field"><span class="sr-only">Search library</span><input type="search" name="q" value="{{ query_text }}" placeholder="Search your library…"></label>
-    <label><span>Reading status</span><select name="read"><option value="">All saved</option><option value="unread" {% if read_status == 'unread' %}selected{% endif %}>Unread</option><option value="read" {% if read_status == 'read' %}selected{% endif %}>Read</option></select></label>
-    <label><span>Category</span><select name="category"><option value="">All categories</option>{% for item in library_categories %}<option value="{{ item }}" {% if item == category %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
-    <label><span>Published</span><select name="days">{% for value, label in [(0, 'Any time'), (30, 'Last 30 days'), (90, 'Last 90 days'), (365, 'Last year')] %}<option value="{{ value }}" {% if value == days %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-    <button class="button primary" type="submit">Apply</button>
-  </form>
-  <section class="paper-list">
-    {% for paper in papers %}{% include "_paper_card.html" %}{% else %}
-      <div class="empty-state"><span class="empty-glyph">◇</span><h2>Nothing here yet</h2><p>Save interesting papers or mark them read from Discover.</p><a class="button primary" href="{{ url_for('web.discover') }}">Explore papers</a></div>
-    {% endfor %}
-  </section>
-  {% if page_number > 1 or has_next %}<nav class="pagination">{% if page_number > 1 %}<a class="button" href="{{ url_for('web.library', read=read_status, q=query_text, category=category, days=days, page=page_number-1) }}">← Previous</a>{% endif %}<span>Page {{ page_number }}</span>{% if has_next %}<a class="button" href="{{ url_for('web.library', read=read_status, q=query_text, category=category, days=days, page=page_number+1) }}">Next →</a>{% endif %}</nav>{% endif %}
+
+  <div class="library-workspace">
+    <aside class="library-sidebar" aria-label="Library groups">
+      <div class="group-sidebar-head" id="groups">
+        <h2>Groups</h2>
+        <details class="new-group-disclosure">
+          <summary class="group-add-button" aria-label="Create a group" title="Create a group">
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12"/></svg>
+          </summary>
+          <form class="group-create-form" method="post" action="{{ url_for('web.create_paper_group') }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <label><span>Group name</span><input type="text" name="name" maxlength="60" required autofocus placeholder="e.g. Thesis reading"></label>
+            <button class="button primary wide" type="submit">Create group</button>
+          </form>
+        </details>
+      </div>
+
+      <nav class="group-navigation" aria-label="Groups">
+        <a class="group-nav-item" href="{{ url_for('web.library') }}" {% if not selected_group %}aria-current="page"{% endif %}>
+          <svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M3.5 5.5h5l1.5 2h6.5v8.25a.75.75 0 0 1-.75.75H4.25a.75.75 0 0 1-.75-.75V5.5Z"/><path d="M3.5 7.5h13"/></svg>
+          <span>All papers</span><small>{{ all_papers_total }}</small>
+        </a>
+        {% for group in groups %}
+          <a class="group-nav-item" href="{{ url_for('web.library', group=group.id) }}" {% if selected_group and selected_group.id == group.id %}aria-current="page"{% endif %}>
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M3.5 5.5h5l1.5 2h6.5v8.25a.75.75 0 0 1-.75.75H4.25a.75.75 0 0 1-.75-.75V5.5Z"/></svg>
+            <span>{{ group.name }}</span><small>{{ group.paper_count }}</small>
+          </a>
+        {% else %}
+          <p class="group-nav-empty">Create a group, then add papers from their <strong>Groups</strong> menu.</p>
+        {% endfor %}
+      </nav>
+
+      {% if selected_group %}
+        <details class="group-settings">
+          <summary>Group settings</summary>
+          <form method="post" action="{{ url_for('web.rename_paper_group', group_id=selected_group.id) }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <label><span>Rename group</span><input type="text" name="name" value="{{ selected_group.name }}" maxlength="60" required></label>
+            <button class="button wide" type="submit">Save name</button>
+          </form>
+          <form method="post" action="{{ url_for('web.delete_paper_group', group_id=selected_group.id) }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button class="button danger-button wide" type="submit" data-confirm="Delete this group? Its papers will stay in All papers.">Delete group</button>
+          </form>
+        </details>
+      {% endif %}
+    </aside>
+
+    <div class="library-content">
+      <form class="filter-panel library-filter" method="get">
+        {% if selected_group %}<input type="hidden" name="group" value="{{ selected_group.id }}">{% endif %}
+        <label class="search-field"><span class="sr-only">Search library</span><input type="search" name="q" value="{{ query_text }}" placeholder="Search this view…"></label>
+        <label><span>Reading status</span><select name="read"><option value="">All saved</option><option value="unread" {% if read_status == 'unread' %}selected{% endif %}>Unread</option><option value="read" {% if read_status == 'read' %}selected{% endif %}>Read</option></select></label>
+        <label><span>Category</span><select name="category"><option value="">All categories</option>{% for item in library_categories %}<option value="{{ item }}" {% if item == category %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
+        <label><span>Published</span><select name="days">{% for value, label in [(0, 'Any time'), (30, 'Last 30 days'), (90, 'Last 90 days'), (365, 'Last year')] %}<option value="{{ value }}" {% if value == days %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <button class="button primary" type="submit">Apply</button>
+      </form>
+
+      <section class="paper-list" aria-label="Library papers">
+        {% for paper in papers %}{% include "_paper_card.html" %}{% else %}
+          <div class="empty-state">
+            <span class="empty-glyph"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M3.5 7h6l2 2.5h9v9.25a1.25 1.25 0 0 1-1.25 1.25H4.75a1.25 1.25 0 0 1-1.25-1.25V7Z"/><path d="M3.5 10h17"/></svg></span>
+            {% if selected_group and not query_text and not category and not read_status and not days %}
+              <h2>This group is empty</h2><p>Open <strong>All papers</strong> and use a paper’s Groups menu to add it here.</p><a class="button primary" href="{{ url_for('web.library') }}">View all papers</a>
+            {% elif all_papers_total %}
+              <h2>No matching papers</h2><p>Try clearing one or more filters.</p><a class="button" href="{{ url_for('web.library', group=selected_group.id if selected_group else none) }}">Clear filters</a>
+            {% else %}
+              <h2>Nothing here yet</h2><p>Save interesting papers from Discover to build your library.</p><a class="button primary" href="{{ url_for('web.discover') }}">Explore papers</a>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </section>
+
+      {% if page_number > 1 or has_next %}
+        <nav class="pagination" aria-label="Library pages">
+          {% if page_number > 1 %}<a class="button" href="{{ url_for('web.library', group=selected_group.id if selected_group else none, read=read_status, q=query_text, category=category, days=days, page=page_number-1) }}">← Previous</a>{% endif %}
+          <span>Page {{ page_number }}</span>
+          {% if has_next %}<a class="button" href="{{ url_for('web.library', group=selected_group.id if selected_group else none, read=read_status, q=query_text, category=category, days=days, page=page_number+1) }}">Next →</a>{% endif %}
+        </nav>
+      {% endif %}
+    </div>
+  </div>
 {% endblock %}

@@ -1,0 +1,27 @@
+<details class="group-picker">
+  <summary class="action-button" aria-label="Choose groups for {{ paper.title }}">
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M3.5 5.5h5l1.5 2h6.5v8.25a.75.75 0 0 1-.75.75H4.25a.75.75 0 0 1-.75-.75V5.5Z"/></svg>
+    Groups{% if paper.groups %}<span class="group-picker-count">{{ paper.groups|length }}</span>{% endif %}
+  </summary>
+  <div class="group-picker-menu">
+    <div class="group-picker-head"><strong>Add to groups</strong><span>{{ paper.groups|length }} selected</span></div>
+    {% if groups %}
+      <form method="post" action="{{ url_for('web.assign_paper_groups', arxiv_id=paper.arxiv_id) }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="return_to" value="{{ request.full_path }}">
+        <div class="group-picker-options">
+          {% for group in groups %}
+            <label>
+              <input type="checkbox" name="group_ids" value="{{ group.id }}" {% if group.id in paper.groups|map(attribute='id') %}checked{% endif %}>
+              <span>{{ group.name }}</span><small>{{ group.paper_count }}</small>
+            </label>
+          {% endfor %}
+        </div>
+        <button class="button primary wide" type="submit">Update groups</button>
+      </form>
+    {% else %}
+      <p class="group-picker-empty">Create your first group from the Groups sidebar, then add this paper.</p>
+      <a class="button wide" href="#groups">Go to Groups</a>
+    {% endif %}
+  </div>
+</details>

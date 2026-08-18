@@ -37,6 +37,7 @@ class PaperQuery:
     days: int = 0
     state: PaperState | None = None
     read_status: ReadStatus | None = None
+    group_id: int | None = None
     hide_read: bool = False
     exclude_interacted: bool = False
     active_categories_only: bool = True
@@ -220,6 +221,9 @@ class PaperService:
                 self.connection.execute(
                     "UPDATE paper_state SET saved_at = NULL WHERE paper_id = ?", (paper_id,)
                 )
+                self.connection.execute(
+                    "DELETE FROM paper_group_memberships WHERE paper_id = ?", (paper_id,)
+                )
         return self.get(arxiv_id)  # type: ignore[return-value]
 
     def set_read(self, arxiv_id: str, read: bool) -> dict[str, Any]:
@@ -240,6 +244,9 @@ class PaperService:
                 self.connection.execute(
                     "UPDATE paper_state SET dismissed_at = ?, saved_at = NULL WHERE paper_id = ?",
                     (isoformat(), paper_id),
+                )
+                self.connection.execute(
+                    "DELETE FROM paper_group_memberships WHERE paper_id = ?", (paper_id,)
                 )
             else:
                 self.connection.execute(
@@ -290,10 +297,19 @@ class PaperService:
                 "EXISTS (SELECT 1 FROM paper_categories pc WHERE pc.paper_id = p.id AND pc.category = ?)"
             )
             params.append(query.category)
+        if query.group_id is not None:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM paper_group_memberships pgm "
+                "WHERE pgm.paper_id = p.id AND pgm.group_id = ?)"
+            )
+            params.append(query.group_id)
         if query.active_categories_only:
             conditions.append(ACTIVE_SOURCE_SQL)
         if query.days > 0:
-            conditions.append("p.published_at >= ?")
+            conditions.append(
+                "(p.source_kind = 'arxiv' OR p.published_at != p.fetched_at) "
+                "AND p.published_at >= ?"
+            )
             params.append(isoformat(utcnow() - timedelta(days=query.days)))
         if query.state == "saved":
             conditions.append("ps.saved_at IS NOT NULL")
@@ -355,7 +371,18 @@ class PaperService:
                 "journal_ref": row["journal_ref"],
                 "comment": row["comment"],
                 "license": row["license_url"],
-                "links": {"abstract": row["abstract_url"], "pdf": row["pdf_url"]},
+                "links": {
+                    "abstract": row["abstract_url"],
+                    "webpage": row["abstract_url"],
+                    "pdf": row["pdf_url"],
+                },
+                "source": {
+                    "kind": row["source_kind"],
+                    "identifier": row["source_identifier"] or row["arxiv_id"],
+                    "name": row["source_name"],
+                    "venue": row["venue"],
+                    "date_known": row["published_at"] != row["fetched_at"],
+                },
                 "state": {
                     "saved": bool(row["saved_at"]),
                     "read": bool(row["read_at"]),

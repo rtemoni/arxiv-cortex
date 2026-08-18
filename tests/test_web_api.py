@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from arxiv_cortex.db import database_connection
 from arxiv_cortex.services.arxiv_sync import ArxivRequestError, ArxivSourcePage, FeedQuery
+from arxiv_cortex.services.groups import PaperGroupService
 from arxiv_cortex.services.papers import PaperService
 from arxiv_cortex.services.search_tags import SearchTagService
 from arxiv_cortex.services.settings import SettingsService
@@ -19,6 +20,78 @@ def test_first_run_redirects_to_onboarding(client):
     response = client.get("/")
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/onboarding")
+
+
+def test_library_can_import_an_external_paper_into_a_group(app, client):
+    token = csrf(client)
+    with database_connection(app.config["DATABASE"]) as connection:
+        group = PaperGroupService(connection).create("AI Verification")
+
+    class FakeImporter:
+        def __init__(self, connection):
+            self.connection = connection
+
+        def import_url(self, url, *, title=""):
+            from arxiv_cortex.services.imports import ImportedPaper, PaperImportService
+
+            return PaperImportService(self.connection).import_metadata(
+                ImportedPaper(
+                    title=title or "Imported systems paper",
+                    abstract="A publisher abstract.",
+                    source_kind="usenix",
+                    source_name="USENIX",
+                    source_identifier=url,
+                    webpage_url=url,
+                    pdf_url="https://www.usenix.org/system/files/imported.pdf",
+                )
+            )
+
+    app.config["PAPER_IMPORT_SERVICE_FACTORY"] = FakeImporter
+    response = client.post(
+        "/library/import",
+        data={
+            "_csrf_token": token,
+            "url": "https://www.usenix.org/conference/example",
+            "group_id": str(group["id"]),
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith(f"/library?group={group['id']}")
+    page = client.get(response.headers["Location"])
+    assert b"Imported systems paper" in page.data
+    assert b"USENIX" in page.data
+    assert b"Webpage" in page.data
+
+
+def test_failed_library_import_preserves_retry_fields(app, client):
+    token = csrf(client)
+
+    class FailingImporter:
+        def __init__(self, _connection):
+            pass
+
+        def import_url(self, _url, *, title=""):
+            from arxiv_cortex.services.imports import PaperImportError
+
+            raise PaperImportError("The PDF has no identifiable title")
+
+    app.config["PAPER_IMPORT_SERVICE_FACTORY"] = FailingImporter
+    response = client.post(
+        "/library/import",
+        data={
+            "_csrf_token": token,
+            "url": "https://example.com/untitled.pdf",
+            "title": "Fallback draft",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b'class="import-paper-disclosure" open' in response.data
+    assert b'value="https://example.com/untitled.pdf"' in response.data
+    assert b'value="Fallback draft"' in response.data
+    assert b"The PDF has no identifiable title" in response.data
 
 
 def test_discovery_search_is_local_only_by_default(app, client, seed_paper):
@@ -436,3 +509,78 @@ def test_library_contains_only_saved_papers_and_filters_read_status(
     assert b"Saved and unread" in response.data
     assert b"Saved and read" not in response.data
     assert b"Read but not saved" not in response.data
+
+
+def test_library_groups_can_be_created_assigned_renamed_filtered_and_deleted(
+    app, client, seed_paper
+):
+    seed_paper("2401.20030", "Paper for a group", "Library organization")
+    seed_paper("2401.20031", "Paper outside the group", "Library organization")
+    with database_connection(app.config["DATABASE"]) as connection:
+        papers = PaperService(connection)
+        papers.set_saved("2401.20030", True)
+        papers.set_saved("2401.20031", True)
+
+    token = csrf(client)
+    created = client.post(
+        "/library/groups",
+        data={"_csrf_token": token, "name": "Core reading"},
+    )
+    assert created.status_code == 302
+    assert "/library?group=" in created.headers["Location"]
+    group_id = int(created.headers["Location"].rsplit("=", 1)[1])
+
+    assigned = client.post(
+        "/papers/2401.20030/groups",
+        data={
+            "_csrf_token": token,
+            "group_ids": [str(group_id)],
+            "return_to": f"/library?group={group_id}",
+        },
+    )
+    assert assigned.status_code == 302
+    assert assigned.headers["Location"].endswith(f"/library?group={group_id}")
+
+    group_page = client.get(f"/library?group={group_id}")
+    assert group_page.status_code == 200
+    assert b"Paper for a group" in group_page.data
+    assert b"Paper outside the group" not in group_page.data
+    assert b"Core reading" in group_page.data
+    assert b'name="group_ids"' in group_page.data
+    assert b"checked" in group_page.data
+
+    renamed = client.post(
+        f"/library/groups/{group_id}",
+        data={"_csrf_token": token, "name": "Thesis shortlist"},
+    )
+    assert renamed.status_code == 302
+    assert b"Thesis shortlist" in client.get(f"/library?group={group_id}").data
+
+    deleted = client.post(
+        f"/library/groups/{group_id}/delete", data={"_csrf_token": token}
+    )
+    assert deleted.status_code == 302
+    all_papers = client.get("/library")
+    assert b"Paper for a group" in all_papers.data
+    assert f'href="/library?group={group_id}"'.encode() not in all_papers.data
+    with database_connection(app.config["DATABASE"]) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM paper_groups WHERE id = ?", (group_id,)
+        ).fetchone()[0] == 0
+
+
+def test_library_group_forms_require_csrf_and_reject_unsafe_return_urls(
+    app, client, seed_paper
+):
+    assert client.post("/library/groups", data={"name": "No token"}).status_code == 400
+    seed_paper("2401.20032", "Safely redirected paper", "Library organization")
+    with database_connection(app.config["DATABASE"]) as connection:
+        PaperService(connection).set_saved("2401.20032", True)
+
+    token = csrf(client)
+    response = client.post(
+        "/papers/2401.20032/groups",
+        data={"_csrf_token": token, "return_to": "https://example.com/escape"},
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/library")

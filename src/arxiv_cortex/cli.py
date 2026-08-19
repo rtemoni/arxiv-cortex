@@ -23,6 +23,22 @@ def register_cli(app: Flask) -> None:
         run_id = current_app.extensions["job_manager"].run_sync_inline("cli")
         click.echo(f"Synchronization run {run_id} finished.")
 
+    @app.cli.command("refresh-citations")
+    def refresh_citations_command() -> None:
+        service = current_app.extensions.get("citation_service")
+        if service is None:
+            from arxiv_cortex.services.citations import CitationService, SemanticScholarSource
+
+            service = CitationService(
+                current_app.config["DATABASE"],
+                SemanticScholarSource(
+                    api_key=str(current_app.config["SEMANTIC_SCHOLAR_API_KEY"]),
+                    timeout_seconds=float(current_app.config["CITATION_TIMEOUT_SECONDS"]),
+                ),
+            )
+        refreshed = service.refresh_saved(max_age_days=0)
+        click.echo(f"Refreshed citation counts for {refreshed} saved paper(s).")
+
     @app.cli.command("reindex")
     @click.option("--reset", is_flag=True, help="Delete active-model vectors before indexing.")
     def reindex_command(reset: bool) -> None:

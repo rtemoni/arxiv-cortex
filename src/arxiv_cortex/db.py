@@ -13,6 +13,17 @@ from flask import Flask, current_app, g
 def connect(path: str | Path) -> sqlite3.Connection:
     connection = sqlite3.connect(str(path), timeout=30, isolation_level=None)
     connection.row_factory = sqlite3.Row
+    connection.create_function(
+        "unicode_casefold",
+        1,
+        lambda value: str(value or "").casefold(),
+        deterministic=True,
+    )
+    connection.create_collation(
+        "UNICODE_NOCASE",
+        lambda left, right: (str(left).casefold() > str(right).casefold())
+        - (str(left).casefold() < str(right).casefold()),
+    )
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
     connection.execute("PRAGMA synchronous = NORMAL")

@@ -27,6 +27,7 @@ The application runs as a Flask web server backed by SQLite, normally bound to l
 - The application remains single-user and local-first, with no authentication or collaboration model.
 - Browser mutations are POST-only and CSRF-protected; the public `/api/v1` surface remains read-only.
 - PDF highlights use selectable text and page geometry. The source PDF is never modified.
+- Saved papers can cache citation counts from Semantic Scholar for local library sorting; normal library reads remain local-only.
 - Highlights and their notes are document-version-specific; the paper synthesis note spans versions.
 - OCR, freehand markup, PDF export, sharing, and automatic annotation migration are outside the first annotation release.
 - Flask, server-rendered Jinja/HTMX, SQLite/FTS5, and a no-build locally vendored frontend remain the operating stack.

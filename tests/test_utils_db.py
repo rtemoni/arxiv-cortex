@@ -48,7 +48,14 @@ def test_migration_enables_wal_foreign_keys_and_fts(app, seed_paper):
             "005",
             "006",
             "007",
+            "008",
         ]
+        paper_columns = {row["name"] for row in connection.execute("PRAGMA table_info(papers)")}
+        assert {"citation_count", "citation_updated_at", "semantic_scholar_id"} <= paper_columns
+        assert connection.execute(
+            "SELECT COUNT(*) FROM paper_substring_fts WHERE paper_substring_fts MATCH ?",
+            ('"visual"',),
+        ).fetchone()[0] == 1
         sync_columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(sync_runs)")
         }

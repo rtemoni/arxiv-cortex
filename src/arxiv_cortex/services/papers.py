@@ -42,6 +42,7 @@ class PaperQuery:
     exclude_interacted: bool = False
     active_categories_only: bool = True
     sort: str = "newest"
+    direction: str = "desc"
     offset: int = 0
     limit: int = 25
 
@@ -76,6 +77,30 @@ def _fts_expression(value: str) -> str:
     return " OR ".join(expressions)
 
 
+def _substring_fts_expression(value: str) -> str:
+    groups = [group for group in QUERY_GROUP_RE.split(value) if group.strip()]
+    if len(groups) <= 1:
+        terms = WORD_RE.findall(value)[:20]
+        if not terms or any(len(term) < 3 for term in terms):
+            return ""
+        return " AND ".join(f'"{term}"' for term in terms)
+
+    expressions = []
+    terms_used = 0
+    for group in groups[:24]:
+        terms = WORD_RE.findall(group)[:8]
+        phrase = " ".join(terms)
+        if len(phrase) < 3:
+            return ""
+        if terms_used + len(terms) > 48:
+            break
+        expressions.append(f'("{phrase}")')
+        terms_used += len(terms)
+        if terms_used >= 48:
+            break
+    return " OR ".join(expressions)
+
+
 class PaperService:
     def __init__(self, connection: sqlite3.Connection):
         self.connection = connection
@@ -95,6 +120,21 @@ class PaperService:
         order_sql = "fts_score ASC, p.published_at DESC" if query.query else "p.published_at DESC"
         if query.sort == "oldest":
             order_sql = "p.published_at ASC"
+        elif query.sort in {"published", "title", "citations"}:
+            direction = "ASC" if query.direction == "asc" else "DESC"
+            if query.sort == "title":
+                order_sql = (
+                    f"p.title COLLATE UNICODE_NOCASE {direction}, p.published_at DESC, p.id ASC"
+                )
+            elif query.sort == "citations":
+                order_sql = (
+                    f"(p.citation_count IS NULL) ASC, p.citation_count {direction}, "
+                    "p.title COLLATE UNICODE_NOCASE ASC, p.id ASC"
+                )
+            else:
+                order_sql = (
+                    f"p.published_at {direction}, p.title COLLATE UNICODE_NOCASE ASC, p.id ASC"
+                )
 
         count_row = self.connection.execute(
             f"SELECT COUNT(DISTINCT p.id) {from_sql} WHERE {where}",  # noqa: S608
@@ -278,20 +318,38 @@ class PaperService:
     def _query_parts(self, query: PaperQuery) -> tuple[str, list[object], str, str]:
         conditions = ["1 = 1"]
         params: list[object] = []
-        fts = _fts_expression(query.query)
-        if query.query and not fts:
-            conditions.append("0 = 1")
+        fts = _substring_fts_expression(query.query)
         if fts:
             from_sql = (
-                "FROM paper_fts JOIN papers p ON p.id = paper_fts.rowid "
+                "FROM paper_substring_fts JOIN papers p ON p.id = paper_substring_fts.rowid "
                 "LEFT JOIN paper_state ps ON ps.paper_id = p.id"
             )
-            conditions.append("paper_fts MATCH ?")
+            conditions.append("paper_substring_fts MATCH ?")
             params.append(fts)
-            score_sql = "bm25(paper_fts, 8.0, 4.0, 1.0)"
+            score_sql = "bm25(paper_substring_fts, 8.0, 4.0, 1.0)"
         else:
             from_sql = "FROM papers p LEFT JOIN paper_state ps ON ps.paper_id = p.id"
             score_sql = "NULL"
+            if query.query:
+                groups = [group for group in QUERY_GROUP_RE.split(query.query) if group.strip()]
+                searchable = "unicode_casefold(p.title || ' ' || p.authors_text || ' ' || p.abstract)"
+                if len(groups) <= 1:
+                    terms = WORD_RE.findall(query.query)[:20]
+                    if terms:
+                        conditions.extend(f"instr({searchable}, ?) > 0" for _term in terms)
+                        params.extend(term.casefold() for term in terms)
+                    else:
+                        conditions.append("0 = 1")
+                else:
+                    phrases = [" ".join(WORD_RE.findall(group)[:8]) for group in groups[:24]]
+                    phrases = [phrase for phrase in phrases if phrase]
+                    if phrases:
+                        conditions.append(
+                            "(" + " OR ".join(f"instr({searchable}, ?) > 0" for _ in phrases) + ")"
+                        )
+                        params.extend(phrase.casefold() for phrase in phrases)
+                    else:
+                        conditions.append("0 = 1")
         if query.category:
             conditions.append(
                 "EXISTS (SELECT 1 FROM paper_categories pc WHERE pc.paper_id = p.id AND pc.category = ?)"
@@ -367,6 +425,8 @@ class PaperService:
                 "primary_category": row["primary_category"],
                 "published_at": row["published_at"],
                 "updated_at": row["updated_at"],
+                "citation_count": row["citation_count"],
+                "citation_updated_at": row["citation_updated_at"],
                 "doi": row["doi"],
                 "journal_ref": row["journal_ref"],
                 "comment": row["comment"],

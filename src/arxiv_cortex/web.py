@@ -647,6 +647,12 @@ def library():
     if read_status not in {"", "read", "unread"}:
         read_status = ""
     days = _int_arg("days", 0, allowed={0, 30, 90, 365})
+    sort_by = request.args.get("sort", "published")
+    if sort_by not in {"published", "citations", "title"}:
+        sort_by = "published"
+    sort_direction = request.args.get("direction", "desc")
+    if sort_direction not in {"asc", "desc"}:
+        sort_direction = "desc"
     connection = get_db()
     group_service = PaperGroupService(connection)
     group_id = _int_arg("group", 0)
@@ -662,6 +668,8 @@ def library():
             read_status=read_status or None,
             group_id=group_id or None,
             active_categories_only=False,
+            sort=sort_by,
+            direction=sort_direction,
             offset=(page_number - 1) * per_page,
             limit=per_page,
         )
@@ -690,6 +698,8 @@ def library():
         papers=result.items,
         read_status=read_status,
         days=days,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
         library_categories=library_categories,
         query_text=request.args.get("q", "").strip(),
         category=request.args.get("category", "").strip(),

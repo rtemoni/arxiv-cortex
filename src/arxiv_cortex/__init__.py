@@ -9,6 +9,7 @@ from flask import Flask
 from arxiv_cortex import db
 from arxiv_cortex.config import default_config
 from arxiv_cortex.services.arxiv_sync import ArxivClientSource
+from arxiv_cortex.services.citations import CitationService, SemanticScholarSource
 from arxiv_cortex.services.embeddings import EmbeddingIndex, EmbeddingService
 from arxiv_cortex.services.jobs import JobManager, recover_interrupted_jobs
 from arxiv_cortex.services.scheduler import SyncScheduler
@@ -58,11 +59,27 @@ def create_app(test_config: dict[str, object] | None = None) -> Flask:
         retries=int(app.config["SYNC_RETRIES"]),
         lease_seconds=int(app.config["SYNC_LEASE_SECONDS"]),
         enabled=bool(app.config["BACKGROUND_JOBS_ENABLED"] and not app.config.get("TESTING")),
+        citation_service=(
+            CitationService(
+                app.config["DATABASE"],
+                (
+                    app.config["CITATION_SOURCE_FACTORY"]()
+                    if app.config.get("CITATION_SOURCE_FACTORY")
+                    else SemanticScholarSource(
+                        api_key=str(app.config["SEMANTIC_SCHOLAR_API_KEY"]),
+                        timeout_seconds=float(app.config["CITATION_TIMEOUT_SECONDS"]),
+                    )
+                ),
+            )
+            if not app.config.get("TESTING") or app.config.get("CITATION_SOURCE_FACTORY")
+            else None
+        ),
     )
     app.extensions["embedding_index"] = embedding_index
     app.extensions["embedding_service"] = embedding_service
     app.extensions["job_manager"] = jobs
     app.extensions["arxiv_source"] = arxiv_source
+    app.extensions["citation_service"] = jobs.citation_service
 
     scheduler = SyncScheduler(app.config["DATABASE"], jobs)
     app.extensions["sync_scheduler"] = scheduler

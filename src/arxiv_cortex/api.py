@@ -179,7 +179,8 @@ def openapi():
 
 
 def _public(item: dict) -> dict:
-    return {key: value for key, value in item.items() if key != "database_id"}
+    private_fields = {"database_id", "citation_count", "citation_updated_at"}
+    return {key: value for key, value in item.items() if key not in private_fields}
 
 
 def _limit() -> int | None:

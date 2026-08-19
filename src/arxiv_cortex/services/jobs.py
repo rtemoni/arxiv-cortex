@@ -10,6 +10,7 @@ from pathlib import Path
 
 from arxiv_cortex.db import database_connection, transaction
 from arxiv_cortex.services.arxiv_sync import ArxivClientSource, ArxivSource, ArxivSyncService
+from arxiv_cortex.services.citations import CitationService
 from arxiv_cortex.services.embeddings import EmbeddingService
 from arxiv_cortex.utils import isoformat, sanitize_error, utcnow
 
@@ -28,6 +29,7 @@ class JobManager:
         retries: int = 5,
         lease_seconds: int = 21600,
         enabled: bool = True,
+        citation_service: CitationService | None = None,
     ):
         self.database_path = database_path
         self.embedding_service = embedding_service
@@ -37,6 +39,7 @@ class JobManager:
         self.lease_seconds = lease_seconds
         self.source_factory = source_factory or self._default_source
         self.enabled = enabled
+        self.citation_service = citation_service
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="arxiv-cortex")
         self._lock = threading.Lock()
         self._futures: dict[int, Future[None]] = {}
@@ -110,6 +113,12 @@ class JobManager:
             self._mark_running(run_id)
             source = self.source_factory()
             ArxivSyncService(self.database_path, source).sync_all(run_id)
+            if self.citation_service:
+                try:
+                    self.citation_service.refresh_saved()
+                except BaseException:
+                    LOGGER.exception("Citation metadata refresh failed; continuing synchronization")
+                self._renew_lease("sync", owner)
 
             def embedding_progress(count: int) -> None:
                 with database_connection(self.database_path) as connection:

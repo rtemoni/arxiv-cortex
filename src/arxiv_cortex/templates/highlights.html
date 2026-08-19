@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Highlights · Arxiv Cortex{% endblock %}
+{% block content %}
+  <div class="workspace-heading highlights-heading">
+    <div><h1>Highlights</h1><p>Quoted evidence and your notes across the reading library.</p></div>
+    <p><strong>{{ total }}</strong> annotated paper{% if total != 1 %}s{% endif %}</p>
+  </div>
+
+  <form class="highlights-filter" method="get">
+    <label class="search-field"><span>Search highlights and notes</span><input type="search" name="q" value="{{ query_text }}" placeholder="Passage, note, title, or author"></label>
+    <label><span>Group</span><select name="group"><option value="">All groups</option>{% for group in groups %}<option value="{{ group.id }}" {% if selected_group and selected_group.id == group.id %}selected{% endif %}>{{ group.name }}</option>{% endfor %}</select></label>
+    <label><span>Sort</span><select name="sort"><option value="updated" {% if sort == 'updated' %}selected{% endif %}>Recently updated</option><option value="newest" {% if sort == 'newest' %}selected{% endif %}>Newest highlight</option><option value="paper" {% if sort == 'paper' %}selected{% endif %}>Paper title</option></select></label>
+    <label class="check-control"><input type="checkbox" name="notes" value="1" {% if notes_only %}checked{% endif %}><span>With notes</span></label>
+    <button class="button" type="submit">Apply</button>
+  </form>
+
+  <div class="highlight-library-list">
+    {% for item in items %}
+      <section class="highlight-paper-group">
+        <header>
+          <div>
+            <span>{{ item.source_name if item.source_kind != 'arxiv' else 'arXiv' }}</span>
+            <h2><a href="{{ url_for('web.paper_detail', arxiv_id=item.arxiv_id) }}">{{ item.title }}</a></h2>
+          </div>
+          <a href="{{ url_for('web.paper_detail', arxiv_id=item.arxiv_id, reader=1) }}">Open reader →</a>
+        </header>
+        {% if item.paper_note_body %}
+          <div class="highlight-paper-note"><strong>Paper note</strong><p>{{ item.paper_note_body }}</p></div>
+        {% endif %}
+        <div class="highlight-paper-rows">
+          {% for highlight in item.highlights %}
+            <a class="highlight-library-row" href="{{ url_for('web.paper_detail', arxiv_id=item.arxiv_id, reader=1, document=highlight.document_id, highlight=highlight.id) }}">
+              <span class="highlight-library-meta">{{ highlight.revision_label }} · page {% if highlight.page_start == highlight.page_end %}{{ highlight.page_start }}{% else %}{{ highlight.page_start }}–{{ highlight.page_end }}{% endif %}</span>
+              <blockquote>{{ highlight.quote }}</blockquote>
+              {% if highlight.note %}<p>{{ highlight.note }}</p>{% endif %}
+            </a>
+          {% endfor %}
+        </div>
+      </section>
+    {% else %}
+      <div class="empty-state highlight-empty">
+        <div class="empty-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5zM8 9h8M8 12h6M8 15h4"/></svg></div>
+        <h2>{% if query_text or selected_group or notes_only %}No annotations match these filters{% else %}Your highlights will collect here{% endif %}</h2>
+        <p>{% if query_text or selected_group or notes_only %}Try a broader search or clear one of the filters.{% else %}Open a paper PDF and select a passage to begin.{% endif %}</p>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if page_number > 1 or has_next %}
+    <nav class="pagination" aria-label="Highlight pages">
+      {% if page_number > 1 %}<a class="button" href="{{ url_for('web.highlights_library', q=query_text or None, group=selected_group.id if selected_group else None, notes=1 if notes_only else None, sort=sort, page=page_number - 1) }}">← Previous</a>{% endif %}
+      <span>Page {{ page_number }}</span>
+      {% if has_next %}<a class="button" href="{{ url_for('web.highlights_library', q=query_text or None, group=selected_group.id if selected_group else None, notes=1 if notes_only else None, sort=sort, page=page_number + 1) }}">Next →</a>{% endif %}
+    </nav>
+  {% endif %}
+{% endblock %}

@@ -6,7 +6,7 @@ This file is the durable plan for future agents. It records the product decision
 
 Arxiv Cortex is a greenfield, single-researcher local application. V1 must remain lightweight and understandable: Flask, Jinja/HTMX, SQLite/FTS5, NumPy exact-vector search, one local MiniLM model, and one in-process background worker. It does not use authentication, a JavaScript build system, Redis, Celery, a hosted database, or a separate vector database.
 
-The supported v1 corpus is a chosen set of followed keyword searches and/or fields, normally 10,000–100,000 papers. The product is not a whole-arXiv mirror. Metadata and abstracts may be stored; PDFs are not downloaded by v1.
+The supported corpus is a chosen set of followed keyword searches and/or fields, normally 10,000–100,000 papers. The product is not a whole-arXiv mirror. Metadata and abstracts are stored locally. PDFs are cached only after the researcher explicitly opens the embedded reader; there is no automatic corpus-wide PDF download.
 
 Primary user flows:
 
@@ -19,6 +19,7 @@ Primary user flows:
 7. Inspect synchronization progress, errors, category subscriptions, and index counts.
 8. Query the same read-only service layer through `/api/v1`.
 9. Save editable research tags and independently choose which tags fetch matching papers as feed sources.
+10. Read an exact cached PDF revision, preserve highlighted passages with notes, and search annotations across papers.
 
 ## V1 architecture and invariants
 
@@ -32,6 +33,8 @@ Primary user flows:
 - `feed_subscriptions` owns per-category backfill status and update watermark.
 - `sync_runs` is the user-visible audit record. `job_leases` prevents overlapping jobs.
 - `search_tags` stores single-user, editable searches plus per-tag follow, backfill, and watermark state; `paper_search_tags` records which followed query fetched each paper.
+- `documents` records opt-in immutable PDF cache versions. `paper_highlights` and `paper_highlight_fragments` bind quoted evidence and PDF-space geometry to one document; `paper_notes` stores one cross-version synthesis per paper.
+- Highlight quotes, attached notes, and paper notes use external-content FTS5 indexes maintained by triggers.
 - Numbered SQL migrations are append-only. Never rewrite a migration that may have shipped; add the next migration instead.
 
 ### Ingestion
@@ -127,6 +130,20 @@ Schema/API impact: Migration `004` adds follow/backfill/watermark columns to `se
 
 Migration and rollback: Migration `004` is additive. Older application code can ignore the new columns and table. Existing category subscriptions are unchanged, and no retained paper or library state is deleted when either source type is disabled.
 
+### 2026-08-18 — Opt-in local PDF annotations
+
+Problem: The metadata-only paper detail forced the researcher to leave Cortex for close reading and provided no durable connection between a selected passage, its exact PDF revision, and the researcher’s interpretation. Binding highlights only to a paper ID would silently misplace geometry when arXiv or an external publisher replaced a PDF.
+
+Decision: Add an opt-in embedded PDF.js reader and cache a PDF only when “Read & highlight” is opened. Keep the source file immutable. Store each highlight against an exact cached document checksum with line rectangles in unscaled PDF coordinates; keep its attached note version-specific and one synthesis note version-independent per paper. Retain every annotated cache version, mark superseded versions stale, and never migrate geometry automatically. Serve PDF bytes only through a resolved document ID with same-origin conditional/range responses. Keep all annotation writes POST-only and CSRF-protected, while leaving `/api/v1` unchanged.
+
+Alternatives rejected: Browser-native PDF viewers do not expose a reliable cross-browser selectable text layer or normalized placement geometry. Writing annotations into PDF files would make source provenance and rollback harder. Binding annotations to the latest paper version would risk silent misplacement. A hosted annotation service, OCR pipeline, and frontend build system would violate the local single-researcher operating model and are unnecessary for selectable PDFs.
+
+Schema/API impact: Append-only migration `007` adds `documents`, `paper_highlights`, `paper_highlight_fragments`, `paper_notes`, and FTS5 indexes/triggers for quotes and notes. Browser-only document and annotation routes are additive. The public read-only `/api/v1` response contract is unchanged. The `documents` name and artifact layout intentionally reserve a compatible base for the planned full-text retrieval work.
+
+Migration and rollback: Application rollback may ignore the additive tables while leaving cached artifacts in `data/documents/`. Annotation-bearing documents are not automatically evicted. A complete backup now includes both the SQLite online backup and `data/documents/`; deleting either independently can make annotations incomplete.
+
+Acceptance evidence: Service and Flask tests cover version/checksum isolation, SSRF and size rejection, atomic cache placement, range delivery, ownership validation, idempotency, optimistic conflicts, cascading deletion, FTS search, escaping, CSRF, and deep links. Pure JavaScript tests cover coordinate conversion, duplicate line merging, rotation-compatible viewports, and multi-page grouping. Desktop and mobile browser review verifies lazy page rendering, overlay restoration, autosave, global search, exact deep links, responsive document/notes tabs, keyboard resizing, focus return, and Back-to-close behavior.
+
 ## V2 scope: local full-text evidence retrieval
 
 V2 adds full-text retrieval for attached agent harnesses. It returns evidence only. The external harness owns prompts, model selection, tool orchestration, answer synthesis, and citation rendering. V2 does not add a built-in chat endpoint, MCP server, or framework-specific agent SDK.
@@ -143,8 +160,8 @@ V2 adds full-text retrieval for attached agent harnesses. It returns evidence on
 
 - A paper is eligible when the user explicitly selects “Index full text” or saves it while `auto_index_saved` is enabled. Default that setting to enabled.
 - Download PDFs only for local personal/research use. The agent API must never return PDF bytes; it returns arXiv source links and extracted evidence.
-- Store artifacts under `data/documents/<safe-arxiv-id>/v<version>/`:
-  - `source.pdf`
+- Reuse each immutable annotation cache directory under `data/documents/<safe-paper-key>/<revision-or-checksum>/`:
+  - the existing `source.pdf`
   - `parsed.json`
   - `document.md`
 - Verify download content type, size limit, checksum, and arXiv ID/version before parsing.
@@ -153,9 +170,9 @@ V2 adds full-text retrieval for attached agent harnesses. It returns evidence on
 
 ### V2 schema
 
-Add new numbered migrations for:
+Extend the migration `007` document foundation through new numbered migrations for:
 
-- `documents`: paper ID, arXiv version, source/parser checksums, parser ID/version, status, artifact paths, created/indexed timestamps, stale flag, and sanitized error.
+- additive `documents` parser/indexing columns: parser checksum and ID/version, parsed artifact paths, indexed timestamp, active-index status, and sanitized parser error. Do not replace document IDs already referenced by annotations.
 - `document_sections`: document ID, stable section ID, parent ID, ordinal, heading, heading path JSON, element kind, page start/end, and normalized text.
 - `chunks`: document/section ID, stable content-derived chunk ID, ordinal, text, contextualized embedding text, token count, page start/end, and content hash.
 - `chunk_fts`: external-content FTS5 index over contextualized chunk text.
@@ -217,6 +234,6 @@ If agent access is later exposed beyond loopback, authentication is a prerequisi
 
 - Multi-user accounts, lab sharing, public hosting, and access-control policy.
 - Built-in LLM answer generation or chat history.
-- Email digests, social popularity, citation-graph ranking, notes, and named collections.
+- Email digests, social popularity, citation-graph ranking, and named collections.
 - Whole-arXiv bulk mirroring and automatic PDF ingestion for all metadata.
 - ANN infrastructure before measured exact-search limits require it.

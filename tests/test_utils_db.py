@@ -47,6 +47,7 @@ def test_migration_enables_wal_foreign_keys_and_fts(app, seed_paper):
             "004",
             "005",
             "006",
+            "007",
         ]
         sync_columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(sync_runs)")

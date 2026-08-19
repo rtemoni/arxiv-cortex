@@ -1,0 +1,108 @@
+<div class="reader-scrim" data-reader-scrim hidden></div>
+<aside
+  class="reader-drawer"
+  data-reader
+  data-paper-id="{{ paper.arxiv_id }}"
+  data-paper-title="{{ paper.title }}"
+  data-csrf-token="{{ csrf_token() }}"
+  data-ensure-url="{{ url_for('web.ensure_paper_document', arxiv_id=paper.arxiv_id) }}"
+  data-annotations-url="{{ url_for('web.paper_annotations', arxiv_id=paper.arxiv_id) }}"
+  data-create-highlight-url="{{ url_for('web.create_paper_highlight', arxiv_id=paper.arxiv_id) }}"
+  data-update-highlight-url="{{ url_for('web.update_paper_highlight', arxiv_id=paper.arxiv_id, highlight_id=0) }}"
+  data-delete-highlight-url="{{ url_for('web.delete_paper_highlight', arxiv_id=paper.arxiv_id, highlight_id=0) }}"
+  data-note-url="{{ url_for('web.update_paper_note', arxiv_id=paper.arxiv_id) }}"
+  data-external-url="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='pdf') }}"
+  data-selected-document-id="{{ selected_document.id if selected_document else '' }}"
+  data-requested-highlight-id="{{ requested_highlight_id or '' }}"
+  data-auto-open="{{ 'true' if reader_requested else 'false' }}"
+  aria-labelledby="reader-title"
+  aria-modal="true"
+  role="dialog"
+  hidden
+>
+  <div class="reader-resize-handle" data-reader-resize role="separator" tabindex="0" aria-label="Resize PDF reader" aria-orientation="vertical" aria-valuemin="760"></div>
+  <header class="reader-toolbar">
+    <div class="reader-title-block">
+      <span>Reading</span>
+      <strong id="reader-title">{{ paper.title }}</strong>
+    </div>
+    <div class="reader-page-tools" aria-label="PDF navigation">
+      <button type="button" class="reader-icon-button" data-page-previous aria-label="Previous page">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12.5 4.5-5 5.5 5 5.5"/></svg>
+      </button>
+      <label class="reader-page-field"><span class="sr-only">Page</span><input type="text" inputmode="numeric" value="1" data-page-input aria-label="Current page"><small data-page-total>/ –</small></label>
+      <button type="button" class="reader-icon-button" data-page-next aria-label="Next page">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5"/></svg>
+      </button>
+    </div>
+    <div class="reader-zoom-tools" aria-label="PDF zoom">
+      <button type="button" class="reader-icon-button" data-zoom-out aria-label="Zoom out">−</button>
+      <button type="button" class="reader-fit-button" data-fit-width>Fit width</button>
+      <button type="button" class="reader-icon-button" data-zoom-in aria-label="Zoom in">+</button>
+    </div>
+    <div class="reader-toolbar-actions">
+      <a href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='pdf') }}" target="_blank" rel="noreferrer" class="reader-icon-button" aria-label="Open source PDF in a new tab">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11 4h5v5M16 4l-7 7M14.5 11.5V16h-10V6h4.5"/></svg>
+      </a>
+      <button type="button" class="reader-icon-button" data-reader-close aria-label="Close reader">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="reader-mobile-tabs" role="tablist" aria-label="Reader view">
+    <button id="reader-document-tab" type="button" role="tab" aria-controls="reader-document-panel" aria-selected="true" tabindex="0" data-reader-tab="document">Document</button>
+    <button id="reader-notes-tab" type="button" role="tab" aria-controls="reader-notes-panel" aria-selected="false" tabindex="-1" data-reader-tab="notes">Notes</button>
+  </div>
+
+  <div class="reader-stale-banner" data-stale-banner hidden>
+    <span>This annotation set belongs to an older PDF version.</span>
+    <button type="button" data-open-latest>Open latest version</button>
+  </div>
+
+  <div class="reader-workspace">
+    <section id="reader-document-panel" class="reader-document-pane" data-reader-panel="document" role="tabpanel" aria-labelledby="reader-document-tab">
+      <div class="reader-document-status" data-reader-status aria-live="polite">
+        <div class="reader-loading-sheet" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <strong>Preparing the PDF</strong>
+        <p>The first open stores a private local copy for stable highlights.</p>
+      </div>
+      <div class="reader-viewport" data-reader-viewport tabindex="0">
+        <div class="reader-pages" data-reader-pages></div>
+      </div>
+      <p class="reader-text-layer-notice" data-text-layer-notice role="status" hidden></p>
+      <button type="button" class="reader-selection-action" data-selection-action hidden>Highlight selection</button>
+    </section>
+
+    <aside id="reader-notes-panel" class="reader-inspector" data-reader-panel="notes" role="tabpanel" aria-labelledby="reader-notes-tab">
+      <div class="reader-version-row">
+        <label for="reader-version">PDF version</label>
+        <select id="reader-version" data-document-select>
+          {% for document in workspace.documents %}
+            <option value="{{ document.id }}" {% if selected_document and document.id == selected_document.id %}selected{% endif %}>{{ document.revision_label }}{% if document.stale %} · archived{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <section class="reader-paper-note">
+        <div class="reader-inspector-heading">
+          <h2 id="reader-paper-note-heading">Paper note</h2>
+          <div class="reader-save-state">
+            <span data-paper-note-status aria-live="polite"></span>
+            <button type="button" data-paper-note-retry hidden>Reload &amp; retry</button>
+          </div>
+        </div>
+        <textarea rows="5" data-paper-note data-revision="{{ workspace.paper_note.revision }}" aria-labelledby="reader-paper-note-heading" placeholder="Synthesize the paper in your own words…">{{ workspace.paper_note.body }}</textarea>
+      </section>
+
+      <section class="reader-highlights-panel">
+        <div class="reader-inspector-heading">
+          <h2>Highlights</h2>
+          <span data-highlight-count>0</span>
+        </div>
+        <p class="reader-highlight-guidance" data-highlight-guidance>Select text in the document, then choose Highlight selection.</p>
+        <div class="reader-highlight-list" data-highlight-list></div>
+      </section>
+    </aside>
+  </div>
+</aside>

@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ paper.title }} · Arxiv Cortex{% endblock %}
+{% block head %}
+  {% if paper.links.pdf %}<script type="module" src="{{ url_for('static', filename='reader.js') }}"></script>{% endif %}
+{% endblock %}
 {% block content %}
   <article class="paper-detail">
     <a class="back-link" href="{{ url_for('web.discover') }}">← Back to discover</a>
@@ -13,7 +16,10 @@
     <div class="detail-actions">
       {% include "_paper_actions.html" %}
       {% if paper.links.webpage %}<a class="button" href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='webpage') }}" target="_blank" rel="noreferrer">{% if paper.source.kind == 'arxiv' %}Abstract on arXiv{% else %}Open webpage{% endif %} ↗</a>{% endif %}
-      {% if paper.links.pdf %}<a class="button primary" href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='pdf') }}" target="_blank" rel="noreferrer">Open PDF ↗</a>{% endif %}
+      {% if paper.links.pdf %}
+        <button class="button primary" type="button" data-reader-open>Read &amp; highlight</button>
+        <a class="button" href="{{ url_for('web.open_paper', arxiv_id=paper.arxiv_id, kind='pdf') }}" target="_blank" rel="noreferrer">PDF ↗</a>
+      {% endif %}
     </div>
     <section class="abstract-full">
       <p class="eyebrow">Abstract</p>
@@ -29,10 +35,49 @@
     </dl>
   </article>
 
+  <section class="annotations-section" id="highlights-notes">
+    <div class="annotations-heading">
+      <div>
+        <h2>Highlights &amp; notes</h2>
+        <p>Passages and working notes retained with this paper.</p>
+      </div>
+      {% if paper.links.pdf %}<button class="button" type="button" data-reader-open>Open reader</button>{% endif %}
+    </div>
+    {% if workspace.paper_note.body %}
+      <div class="paper-note-summary">
+        <strong>Paper note</strong>
+        <p>{{ workspace.paper_note.body }}</p>
+      </div>
+    {% endif %}
+    <div class="annotation-summary-list">
+      {% set annotation_count = namespace(value=0) %}
+      {% for document in workspace.documents %}
+        {% for highlight in document.highlights %}
+          {% set annotation_count.value = annotation_count.value + 1 %}
+          <a class="annotation-summary-row" href="{{ url_for('web.paper_detail', arxiv_id=paper.arxiv_id, reader=1, document=document.id, highlight=highlight.id) }}">
+            <span class="annotation-summary-meta">{{ document.revision_label }} · page {% if highlight.page_start == highlight.page_end %}{{ highlight.page_start }}{% else %}{{ highlight.page_start }}–{{ highlight.page_end }}{% endif %}</span>
+            <q>{{ highlight.quote }}</q>
+            {% if highlight.note %}<span class="annotation-summary-note">{{ highlight.note }}</span>{% endif %}
+          </a>
+        {% endfor %}
+      {% endfor %}
+      {% if annotation_count.value == 0 and not workspace.paper_note.body %}
+        <div class="annotation-empty">
+          <strong>No annotations yet</strong>
+          <p>{% if paper.links.pdf %}Open the reader and select a passage to keep it here.{% else %}This paper has no PDF source for text highlighting.{% endif %}</p>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
   <section class="related-section">
     <div class="section-heading"><div><p class="eyebrow">Vector neighbors</p><h2>Related papers</h2></div></div>
     <div class="paper-list compact-list">
       {% for paper in related %}{% include "_paper_card.html" %}{% else %}<p class="muted">Related papers appear after embedding completes.</p>{% endfor %}
     </div>
   </section>
+
+  {% if paper.links.pdf %}
+    {% include "_reader_drawer.html" %}
+  {% endif %}
 {% endblock %}

@@ -8,16 +8,20 @@ from flask import (
     abort,
     current_app,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
+    send_file,
     session,
     url_for,
 )
 
 from arxiv_cortex.db import get_db
 from arxiv_cortex.security import csrf_token, validate_csrf
+from arxiv_cortex.services.annotations import AnnotationConflict, AnnotationService
 from arxiv_cortex.services.arxiv_sync import ArxivRequestError
+from arxiv_cortex.services.documents import PdfDocumentError, PdfDocumentService
 from arxiv_cortex.services.groups import PaperGroupService
 from arxiv_cortex.services.imports import PaperImportError, PaperImportService
 from arxiv_cortex.services.papers import PaperQuery, PaperService
@@ -455,14 +459,184 @@ def onboarding():
 
 @web.route("/papers/<path:arxiv_id>")
 def paper_detail(arxiv_id: str):
-    papers = PaperService(get_db())
+    connection = get_db()
+    papers = PaperService(connection)
     paper = papers.get(arxiv_id)
     if not paper:
         abort(404)
     related = RecommendationService(
-        get_db(), current_app.extensions["embedding_index"]
+        connection, current_app.extensions["embedding_index"]
     ).similar(arxiv_id, limit=8)
-    return render_template("paper.html", paper=paper, related=related)
+    workspace = AnnotationService(connection).paper_workspace(arxiv_id)
+    requested_document_id = _int_arg("document", 0)
+    selected_document = next(
+        (
+            document
+            for document in workspace["documents"]
+            if int(document["id"]) == requested_document_id
+        ),
+        workspace["documents"][0] if workspace["documents"] else None,
+    )
+    return render_template(
+        "paper.html",
+        paper=paper,
+        related=related,
+        workspace=workspace,
+        selected_document=selected_document,
+        reader_requested=request.args.get("reader") == "1",
+        requested_highlight_id=_int_arg("highlight", 0),
+    )
+
+
+@web.get("/highlights")
+def highlights_library():
+    connection = get_db()
+    group_service = PaperGroupService(connection)
+    group_id = _int_arg("group", 0)
+    selected_group = group_service.get(group_id) if group_id else None
+    if group_id and not selected_group:
+        abort(404)
+    page_number = max(1, _int_arg("page", 1))
+    query = request.args.get("q", "").strip()
+    sort = request.args.get("sort", "updated")
+    if sort not in {"updated", "newest", "paper"}:
+        sort = "updated"
+    per_page = 20
+    items, total = AnnotationService(connection).library(
+        query=query,
+        group_id=group_id or None,
+        notes_only=request.args.get("notes") == "1",
+        sort=sort,
+        offset=(page_number - 1) * per_page,
+        limit=per_page,
+    )
+    return render_template(
+        "highlights.html",
+        items=items,
+        total=total,
+        groups=group_service.list(),
+        selected_group=selected_group,
+        query_text=query,
+        notes_only=request.args.get("notes") == "1",
+        sort=sort,
+        page_number=page_number,
+        has_next=page_number * per_page < total,
+    )
+
+
+@web.post("/papers/<path:arxiv_id>/documents/ensure")
+def ensure_paper_document(arxiv_id: str):
+    try:
+        document = _document_service().ensure(arxiv_id)
+    except LookupError:
+        abort(404)
+    except PdfDocumentError as error:
+        return jsonify({"error": str(error)}), 422
+    return jsonify({"document": _document_json(document, arxiv_id)})
+
+
+@web.get("/papers/<path:arxiv_id>/documents/<int:document_id>/content")
+def paper_document_content(arxiv_id: str, document_id: int):
+    service = _document_service()
+    document = service.get(document_id, arxiv_id=arxiv_id)
+    if not document or document["status"] != "ready":
+        abort(404)
+    try:
+        path = service.path_for(document)
+    except PdfDocumentError:
+        abort(404)
+    if not path.is_file():
+        abort(404)
+    response = send_file(
+        path,
+        mimetype="application/pdf",
+        conditional=True,
+        etag=document["source_checksum"],
+        download_name=f"{arxiv_id.replace('/', '-')}-{document['revision_label']}.pdf",
+        max_age=31536000,
+    )
+    response.cache_control.private = True
+    response.cache_control.public = False
+    return response
+
+
+@web.get("/papers/<path:arxiv_id>/annotations")
+def paper_annotations(arxiv_id: str):
+    document_id = _int_arg("document", 0)
+    if not document_id:
+        abort(400, description="A cached PDF document is required")
+    try:
+        data = AnnotationService(get_db()).annotations_for_document(arxiv_id, document_id)
+    except LookupError:
+        abort(404)
+    data["document"] = _document_json(data["document"], arxiv_id)
+    return jsonify(data)
+
+
+@web.post("/papers/<path:arxiv_id>/highlights")
+def create_paper_highlight(arxiv_id: str):
+    values = request.get_json(silent=True) or {}
+    try:
+        highlight = AnnotationService(get_db()).create_highlight(
+            arxiv_id,
+            document_id=int(values.get("document_id", 0)),
+            quote=values.get("quote", ""),
+            fragments=values.get("fragments", []),
+            client_request_id=values.get("client_request_id", ""),
+            pdf_fingerprint=values.get("pdf_fingerprint", ""),
+            page_count=_optional_int(values.get("page_count")),
+        )
+    except LookupError:
+        abort(404)
+    except (TypeError, ValueError) as error:
+        return jsonify({"error": str(error)}), 400
+    return jsonify({"highlight": highlight}), 201
+
+
+@web.post("/papers/<path:arxiv_id>/highlights/<int:highlight_id>")
+def update_paper_highlight(arxiv_id: str, highlight_id: int):
+    values = request.get_json(silent=True) or {}
+    try:
+        highlight = AnnotationService(get_db()).update_highlight_note(
+            arxiv_id,
+            highlight_id,
+            note=values.get("note", ""),
+            revision=int(values.get("revision", 0)),
+        )
+    except LookupError:
+        abort(404)
+    except AnnotationConflict as error:
+        return jsonify({"error": str(error)}), 409
+    except (TypeError, ValueError) as error:
+        return jsonify({"error": str(error)}), 400
+    return jsonify({"highlight": highlight})
+
+
+@web.post("/papers/<path:arxiv_id>/highlights/<int:highlight_id>/delete")
+def delete_paper_highlight(arxiv_id: str, highlight_id: int):
+    try:
+        AnnotationService(get_db()).delete_highlight(arxiv_id, highlight_id)
+    except LookupError:
+        abort(404)
+    return "", 204
+
+
+@web.post("/papers/<path:arxiv_id>/note")
+def update_paper_note(arxiv_id: str):
+    values = request.get_json(silent=True) or {}
+    try:
+        note = AnnotationService(get_db()).upsert_paper_note(
+            arxiv_id,
+            body=values.get("body", ""),
+            revision=int(values.get("revision", 0)),
+        )
+    except LookupError:
+        abort(404)
+    except AnnotationConflict as error:
+        return jsonify({"error": str(error)}), 409
+    except (TypeError, ValueError) as error:
+        return jsonify({"error": str(error)}), 400
+    return jsonify({"paper_note": note})
 
 
 @web.route("/library")
@@ -820,6 +994,40 @@ def _state_response(paper: dict):
     if request.headers.get("HX-Request"):
         return render_template("_paper_actions.html", paper=paper)
     return redirect(request.referrer or url_for("web.discover"))
+
+
+def _document_service() -> PdfDocumentService:
+    factory = current_app.config.get("PDF_DOCUMENT_SERVICE_FACTORY")
+    if factory:
+        return factory(get_db())
+    return PdfDocumentService(
+        get_db(),
+        data_dir=current_app.config["DATA_DIR"],
+        max_bytes=int(current_app.config["PDF_CACHE_MAX_BYTES"]),
+    )
+
+
+def _document_json(document: dict, arxiv_id: str) -> dict[str, object]:
+    return {
+        "id": int(document["id"]),
+        "revision_label": document["revision_label"],
+        "source_checksum": document["source_checksum"],
+        "pdf_fingerprint": document["pdf_fingerprint"],
+        "byte_size": document["byte_size"],
+        "page_count": document["page_count"],
+        "stale": bool(document["stale"]),
+        "content_url": url_for(
+            "web.paper_document_content",
+            arxiv_id=arxiv_id,
+            document_id=document["id"],
+        ),
+    }
+
+
+def _optional_int(value) -> int | None:
+    if value in {None, ""}:
+        return None
+    return int(value)
 
 
 def _split_categories(value: str) -> list[str]:

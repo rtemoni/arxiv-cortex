@@ -26,4 +26,7 @@ def default_config() -> dict[str, object]:
         "SYNC_LEASE_SECONDS": 60 * 60 * 6,
         "PER_PAGE": 25,
         "API_MAX_LIMIT": 100,
+        "PDF_CACHE_MAX_BYTES": int(
+            os.getenv("ARXIV_CORTEX_PDF_CACHE_MAX_BYTES", str(50 * 1024 * 1024))
+        ),
     }

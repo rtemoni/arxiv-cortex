@@ -842,6 +842,11 @@ class ArxivSyncService:
             )
             connection.execute("DELETE FROM paper_authors WHERE paper_id = ?", (paper_id,))
             connection.execute("DELETE FROM paper_categories WHERE paper_id = ?", (paper_id,))
+            if int(existing["latest_version"]) != record.version:
+                connection.execute(
+                    "UPDATE documents SET stale = 1 WHERE paper_id = ? AND revision_label != ?",
+                    (paper_id, f"v{record.version}"),
+                )
             outcome = "updated"
         else:
             connection.execute(

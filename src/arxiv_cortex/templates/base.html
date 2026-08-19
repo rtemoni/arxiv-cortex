@@ -10,6 +10,7 @@
     <script defer src="{{ url_for('static', filename='htmx.min.js') }}"></script>
     <script defer src="{{ url_for('static', filename='vendor/katex/katex.min.js') }}"></script>
     <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+    {% block head %}{% endblock %}
   </head>
   <body class="{% block body_class %}{% endblock %}" hx-headers='{"X-CSRFToken":"{{ csrf_token() }}"}'>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -22,6 +23,7 @@
       <nav aria-label="Primary navigation" {% if request.endpoint == 'web.onboarding' %}hidden{% endif %}>
         <a href="{{ url_for('web.discover') }}" {% if request.endpoint == 'web.discover' %}aria-current="page"{% endif %}>Discover</a>
         <a href="{{ url_for('web.library') }}" {% if request.endpoint == 'web.library' %}aria-current="page"{% endif %}>Library</a>
+        <a href="{{ url_for('web.highlights_library') }}" {% if request.endpoint == 'web.highlights_library' %}aria-current="page"{% endif %}>Highlights</a>
         <a href="{{ url_for('web.settings') }}" {% if request.endpoint == 'web.settings' %}aria-current="page"{% endif %}>Settings</a>
       </nav>
     </header>
@@ -43,5 +45,6 @@
       <span>Private, local, and independent.</span>
       <a href="{{ url_for('api.openapi') }}">API contract</a>
     </footer>
+    {% block scripts %}{% endblock %}
   </body>
 </html>

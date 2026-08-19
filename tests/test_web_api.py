@@ -473,6 +473,8 @@ def test_api_contract_health_search_detail_and_limits(app, client, seed_paper):
     assert result.status_code == 200
     assert result.json["data"][0]["arxiv_id"] == "2401.20003"
     assert "database_id" not in result.json["data"][0]
+    assert "citation_count" not in result.json["data"][0]
+    assert "citation_updated_at" not in result.json["data"][0]
 
     detail = client.get("/api/v1/papers/2401.20003")
     assert detail.json["data"]["links"]["pdf"].endswith("2401.20003")
@@ -509,6 +511,28 @@ def test_library_contains_only_saved_papers_and_filters_read_status(
     assert b"Saved and unread" in response.data
     assert b"Saved and read" not in response.data
     assert b"Read but not saved" not in response.data
+
+
+def test_library_searches_partial_words_and_preserves_sort_controls(
+    app, client, seed_paper
+):
+    seed_paper("2401.20050", "Rethinking Agent Security", "Library paper")
+    seed_paper("2401.20051", "Another paper", "Library paper")
+    with database_connection(app.config["DATABASE"]) as connection:
+        papers = PaperService(connection)
+        papers.set_saved("2401.20050", True)
+        papers.set_saved("2401.20051", True)
+        connection.execute(
+            "UPDATE papers SET citation_count = 7 WHERE arxiv_id = '2401.20050'"
+        )
+
+    response = client.get("/library?q=gent&sort=citations&direction=asc")
+    assert response.status_code == 200
+    assert b"Rethinking Agent Security" in response.data
+    assert b"Another paper" not in response.data
+    assert b'<option value="citations" selected>Citations</option>' in response.data
+    assert b'<option value="asc" selected>Ascending</option>' in response.data
+    assert b"7 citations" in response.data
 
 
 def test_library_groups_can_be_created_assigned_renamed_filtered_and_deleted(

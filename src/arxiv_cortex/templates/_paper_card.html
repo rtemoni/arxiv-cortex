@@ -8,6 +8,7 @@
     {% endif %}
     {% if paper.source.kind == 'arxiv' or paper.source.date_known %}<time datetime="{{ paper.published_at }}">{{ paper.published_at|short_date }}</time>{% endif %}
     {% if paper.version > 1 %}<span>v{{ paper.version }}</span>{% endif %}
+    {% if library_mode|default(false) and paper.citation_count is not none %}<span>{{ paper.citation_count }} citation{% if paper.citation_count != 1 %}s{% endif %}</span>{% endif %}
     {% if paper.score is defined and mode|default('') not in ['newest', 'search'] %}<span class="score" title="Similarity score">{{ "%.3f"|format(paper.score) }}</span>{% endif %}
   </div>
   <h2><a href="{{ url_for('web.paper_detail', arxiv_id=paper.arxiv_id) }}">{{ paper.title }}</a></h2>

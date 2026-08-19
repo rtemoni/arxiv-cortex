@@ -77,6 +77,8 @@
         <label><span>Reading status</span><select name="read"><option value="">All saved</option><option value="unread" {% if read_status == 'unread' %}selected{% endif %}>Unread</option><option value="read" {% if read_status == 'read' %}selected{% endif %}>Read</option></select></label>
         <label><span>Category</span><select name="category"><option value="">All categories</option>{% for item in library_categories %}<option value="{{ item }}" {% if item == category %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
         <label><span>Published</span><select name="days">{% for value, label in [(0, 'Any time'), (30, 'Last 30 days'), (90, 'Last 90 days'), (365, 'Last year')] %}<option value="{{ value }}" {% if value == days %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label><span>Sort by</span><select name="sort"><option value="published" {% if sort_by == 'published' %}selected{% endif %}>Release date</option><option value="citations" {% if sort_by == 'citations' %}selected{% endif %}>Citations</option><option value="title" {% if sort_by == 'title' %}selected{% endif %}>Name</option></select></label>
+        <label><span>Order</span><select name="direction"><option value="desc" {% if sort_direction == 'desc' %}selected{% endif %}>Descending</option><option value="asc" {% if sort_direction == 'asc' %}selected{% endif %}>Ascending</option></select></label>
         <button class="button primary" type="submit">Apply</button>
       </form>
 
@@ -97,9 +99,9 @@
 
       {% if page_number > 1 or has_next %}
         <nav class="pagination" aria-label="Library pages">
-          {% if page_number > 1 %}<a class="button" href="{{ url_for('web.library', group=selected_group.id if selected_group else none, read=read_status, q=query_text, category=category, days=days, page=page_number-1) }}">← Previous</a>{% endif %}
+          {% if page_number > 1 %}<a class="button" href="{{ url_for('web.library', group=selected_group.id if selected_group else none, read=read_status, q=query_text, category=category, days=days, sort=sort_by, direction=sort_direction, page=page_number-1) }}">← Previous</a>{% endif %}
           <span>Page {{ page_number }}</span>
-          {% if has_next %}<a class="button" href="{{ url_for('web.library', group=selected_group.id if selected_group else none, read=read_status, q=query_text, category=category, days=days, page=page_number+1) }}">Next →</a>{% endif %}
+          {% if has_next %}<a class="button" href="{{ url_for('web.library', group=selected_group.id if selected_group else none, read=read_status, q=query_text, category=category, days=days, sort=sort_by, direction=sort_direction, page=page_number+1) }}">Next →</a>{% endif %}
         </nav>
       {% endif %}
     </div>

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from arxiv_cortex.db import database_connection
 from arxiv_cortex.services.papers import PaperQuery, PaperService
 from arxiv_cortex.services.recommendations import RecommendationService
@@ -34,6 +36,70 @@ def test_keyword_search_weights_and_filters(app, seed_paper):
         page = PaperService(connection).list(PaperQuery(query="vision transformer"))
         assert [item["arxiv_id"] for item in page.items] == ["2401.10002", "2401.10003"]
         assert page.items[0]["score"] > page.items[1]["score"] > 0
+
+
+def test_local_search_matches_substrings_inside_title_words(app, seed_paper):
+    seed_paper("2401.10020", "Rethinking Agent Security", "A networking perspective")
+    seed_paper("2401.10021", "Unrelated systems", "A separate abstract")
+    with database_connection(app.config["DATABASE"]) as connection:
+        service = PaperService(connection)
+        assert [
+            item["arxiv_id"] for item in service.list(PaperQuery(query="think gent curit")).items
+        ] == ["2401.10020"]
+        assert [item["arxiv_id"] for item in service.list(PaperQuery(query="ge")).items] == [
+            "2401.10020"
+        ]
+
+
+def test_library_sorting_supports_date_citations_and_name(app, seed_paper):
+    newest = seed_paper(
+        "2401.10022",
+        "Beta paper",
+        "Abstract",
+        published_at=datetime(2025, 1, 3, tzinfo=UTC),
+    )
+    oldest = seed_paper(
+        "2401.10023",
+        "alpha paper",
+        "Abstract",
+        published_at=datetime(2024, 1, 3, tzinfo=UTC),
+    )
+    unknown = seed_paper(
+        "2401.10024",
+        "Gamma paper",
+        "Abstract",
+        published_at=datetime(2023, 1, 3, tzinfo=UTC),
+    )
+    with database_connection(app.config["DATABASE"]) as connection:
+        service = PaperService(connection)
+        for record in (newest, oldest, unknown):
+            service.set_saved(record.arxiv_id, True)
+        connection.execute(
+            "UPDATE papers SET citation_count = 3 WHERE arxiv_id = ?", (newest.arxiv_id,)
+        )
+        connection.execute(
+            "UPDATE papers SET citation_count = 12 WHERE arxiv_id = ?", (oldest.arxiv_id,)
+        )
+
+        base = {"state": "saved", "active_categories_only": False}
+        by_date = service.list(PaperQuery(**base, sort="published", direction="asc"))
+        assert [item["arxiv_id"] for item in by_date.items] == [
+            unknown.arxiv_id,
+            oldest.arxiv_id,
+            newest.arxiv_id,
+        ]
+        by_name = service.list(PaperQuery(**base, sort="title", direction="asc"))
+        assert [item["title"] for item in by_name.items] == [
+            "alpha paper",
+            "Beta paper",
+            "Gamma paper",
+        ]
+        by_citations = service.list(PaperQuery(**base, sort="citations", direction="desc"))
+        assert [item["citation_count"] for item in by_citations.items] == [12, 3, None]
+        by_fewest_citations = service.list(
+            PaperQuery(**base, sort="citations", direction="asc")
+        )
+        assert [item["citation_count"] for item in by_fewest_citations.items] == [3, 12, None]
 
 
 def test_comma_separated_keyword_phrases_match_any_group(app, seed_paper):

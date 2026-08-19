@@ -24,6 +24,10 @@ def default_config() -> dict[str, object]:
         "SYNC_DELAY_SECONDS": float(os.getenv("ARXIV_CORTEX_SYNC_DELAY_SECONDS", "3.1")),
         "SYNC_RETRIES": int(os.getenv("ARXIV_CORTEX_SYNC_RETRIES", "5")),
         "SYNC_LEASE_SECONDS": 60 * 60 * 6,
+        "SEMANTIC_SCHOLAR_API_KEY": os.getenv("SEMANTIC_SCHOLAR_API_KEY", ""),
+        "CITATION_TIMEOUT_SECONDS": float(
+            os.getenv("ARXIV_CORTEX_CITATION_TIMEOUT_SECONDS", "20")
+        ),
         "PER_PAGE": 25,
         "API_MAX_LIMIT": 100,
         "PDF_CACHE_MAX_BYTES": int(

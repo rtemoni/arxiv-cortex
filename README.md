@@ -60,6 +60,7 @@ The lock selects PyTorch's CPU-only wheel on Linux, so the image does not carry 
 - MiniLM embeds `title + abstract`. Normalized vectors are loaded into one contiguous NumPy matrix and ranked with exact dot products.
 - Recommendations use the normalized mean of saved papers minus `0.35 ×` the mean of dismissed papers. Read papers are neutral but excluded from candidates.
 - Opening “Read & highlight” caches that PDF revision under `data/documents/`, renders it through a pinned local PDF.js build, and stores yellow highlight geometry without modifying the source PDF.
+- Daily and manual refreshes update citation counts for saved arXiv/DOI papers through the Semantic Scholar Academic Graph API; set `SEMANTIC_SCHOLAR_API_KEY` when higher API limits are needed.
 - Highlight quotes and attached notes are tied to one immutable cached PDF checksum. A paper synthesis note spans every PDF version, and FTS5 makes both kinds of notes searchable in Highlights.
 - Browser mutations are CSRF-protected. The `/api/v1` API is read-only and has no CORS headers.
 
@@ -68,6 +69,8 @@ The generated OpenAPI contract is available at `/api/v1/openapi.json`.
 ## Data and privacy
 
 Metadata and abstracts are stored locally. PDFs remain remote until you explicitly open the embedded reader; that action creates an immutable local cache under `data/documents/`. Highlight quotes, notes, PDF checksums, and placement geometry live in SQLite. The source PDF is never edited, and no cached PDF or annotation is exposed through the public read-only `/api/v1` contract.
+
+Citation refreshes send the arXiv IDs or DOIs of saved papers to Semantic Scholar. Citation counts are cached locally and ordinary library searches and sorting never contact an external service.
 
 For a complete annotation backup, take an online SQLite backup and copy the immutable document cache:
 
